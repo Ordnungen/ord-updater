@@ -312,8 +312,8 @@ export default class OrdUpdater extends Plugin {
         const expiry = this.processing.get(file.path);
         if (expiry && Date.now() < expiry) return false;
 
-        // Step 1: rename parent folder if it has spaces (only manual — breaks Obsidian open on auto)
-        if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
+        // Step 1: rename parent folder if it has spaces
+        if (this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
@@ -326,14 +326,24 @@ export default class OrdUpdater extends Plugin {
         // Step 2: skip index files
         if (file.parent && file.basename === file.parent.name) return false;
 
-        // Step 2: rename file itself if it has spaces (only manual)
-        if (isManual && this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
-            const newName = file.name.replace(/\s+/g, '_');
-            try {
-                await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
+        // Step 2: rename file itself if it has spaces
+        if (this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
+            const doRename = async () => {
+                const newName = file.name.replace(/\s+/g, '_');
+                try {
+                    await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
+                } catch (e) {
+                    console.error("ORDupdater: rename failed", String(e));
+                }
+            };
+            if (isManual) {
+                await doRename();
                 return true;
-            } catch (e) {
-                console.error("ORDupdater: rename failed", file.path, String(e));
+            } else {
+                window.setTimeout(async () => {
+                    const fresh = this.app.vault.getAbstractFileByPath(file.path);
+                    if (fresh instanceof TFile) await doRename();
+                }, 500);
             }
         }
 

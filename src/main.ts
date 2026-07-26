@@ -28,6 +28,8 @@ const LANG = {
         settingIndexOnSave: 'Обновлять индекс при сохранении',
         settingIndexOnSaveDesc: 'Обновлять индексный файл родительской папки при сохранении.',
         settingDangerous: 'Опасные функции',
+        settingLock: 'Блокировать свойства',
+        settingLockDesc: 'Скрывает кнопку «Добавить свойство» и крестики удаления тегов в режиме чтения. Полезно если плагин управляет свойствами.',
         settingOverwrite: 'Перезаписывать все свойства',
         settingOverwriteDesc: 'Удаляет нестандартные поля из frontmatter (aliases, description и т.д.). Включайте только если понимаете что делаете.',
         settingSanitize: 'Убирать пробелы в именах',
@@ -57,6 +59,8 @@ const LANG = {
         settingIndexOnSave: 'Update index on save',
         settingIndexOnSaveDesc: 'Update the parent folder index file on save.',
         settingDangerous: 'Dangerous features',
+        settingLock: 'Lock properties',
+        settingLockDesc: 'Hides the "Add property" button and tag remove buttons in read mode. Useful when the plugin manages properties.',
         settingOverwrite: 'Overwrite all frontmatter',
         settingOverwriteDesc: 'Removes non-standard fields from frontmatter (aliases, description, etc.). Enable only if you understand the consequences.',
         settingSanitize: 'Remove spaces in names',
@@ -94,6 +98,7 @@ interface ORDupdaterSettings {
     updateIndexOnSave: boolean;
     overwriteMode: boolean;
     sanitizeSpaces: boolean;
+    lockProperties: boolean;
 }
 
 const DEFAULT_SETTINGS: ORDupdaterSettings = {
@@ -104,6 +109,7 @@ const DEFAULT_SETTINGS: ORDupdaterSettings = {
     updateIndexOnSave: true,
     overwriteMode: false,
     sanitizeSpaces: false,
+    lockProperties: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -117,9 +123,11 @@ export default class OrdUpdater extends Plugin {
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
     private inBatch = false;
+    private lockStyle: HTMLStyleElement | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
+        this.applyLockStyle();
 
         this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
             const vault = this.app.vault;
@@ -279,6 +287,10 @@ export default class OrdUpdater extends Plugin {
 
     onunload(): void {
         this.processing.clear();
+        if (this.lockStyle) {
+            this.lockStyle.remove();
+            this.lockStyle = null;
+        }
     }
 
     async loadSettings(): Promise<void> {
@@ -287,10 +299,27 @@ export default class OrdUpdater extends Plugin {
 
     async saveSettings(): Promise<void> {
         await this.saveData(this.pluginSettings);
+        this.applyLockStyle();
     }
 
     getSettings(): ORDupdaterSettings {
         return this.pluginSettings;
+    }
+
+    private applyLockStyle(): void {
+        if (this.lockStyle) {
+            this.lockStyle.remove();
+            this.lockStyle = null;
+        }
+        if (this.pluginSettings.lockProperties) {
+            this.lockStyle = document.createElement('style');
+            this.lockStyle.textContent = `
+.metadata-container .metadata-add-button { display: none !important; }
+.markdown-preview-view .metadata-container .multi-select-pill-remove-button { display: none !important; }
+.markdown-preview-view .metadata-container .multi-select-pill { padding-right: 0.7em !important; }
+`;
+            document.head.appendChild(this.lockStyle);
+        }
     }
 
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
@@ -670,6 +699,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
             { id: 'updateIndexOnSave', name: t('settingIndexOnSave'), desc: t('settingIndexOnSaveDesc'), type: 'toggle' },
             { id: 'overwriteMode', name: t('settingOverwrite'), desc: t('settingOverwriteDesc'), type: 'toggle' },
             { id: 'sanitizeSpaces', name: t('settingSanitize'), desc: t('settingSanitizeDesc'), type: 'toggle' },
+            { id: 'lockProperties', name: t('settingLock'), desc: t('settingLockDesc'), type: 'toggle' },
         ];
     }
 
@@ -702,6 +732,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
             .setDesc(t('settingTagsDesc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.getSettings().autoTags)
+                .setDisabled(this.plugin.getSettings().overwriteMode)
                 .onChange(async (val) => {
                     const s = this.plugin.getSettings();
                     s.autoTags = val;
@@ -713,6 +744,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
             .setDesc(t('settingLinksDesc'))
             .addToggle(toggle => toggle
                 .setValue(this.plugin.getSettings().autoLinks)
+                .setDisabled(this.plugin.getSettings().overwriteMode)
                 .onChange(async (val) => {
                     const s = this.plugin.getSettings();
                     s.autoLinks = val;
@@ -742,6 +774,18 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName(t('settingLock'))
+            .setDesc(t('settingLockDesc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.getSettings().lockProperties)
+                .setDisabled(this.plugin.getSettings().overwriteMode)
+                .onChange(async (val) => {
+                    const s = this.plugin.getSettings();
+                    s.lockProperties = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName(t('settingDangerous'))
             .setHeading();
 
@@ -753,7 +797,13 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                 .onChange(async (val) => {
                     const s = this.plugin.getSettings();
                     s.overwriteMode = val;
+                    if (val) {
+                        s.autoTags = true;
+                        s.autoLinks = true;
+                        s.lockProperties = true;
+                    }
                     await this.plugin.saveSettings();
+                    this.display();
                 }));
 
         new Setting(containerEl)

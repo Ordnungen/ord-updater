@@ -27,6 +27,11 @@ const LANG = {
         settingIndexDesc: 'Автоматически создавать и обновлять индексные файлы папок.',
         settingIndexOnSave: 'Обновлять индекс при сохранении',
         settingIndexOnSaveDesc: 'Обновлять индексный файл родительской папки при сохранении.',
+        settingDangerous: 'Опасные функции',
+        settingOverwrite: 'Перезаписывать все свойства',
+        settingOverwriteDesc: 'Удаляет нестандартные поля из frontmatter (aliases, description и т.д.). Включайте только если понимаете что делаете.',
+        settingSanitize: 'Убирать пробелы в именах',
+        settingSanitizeDesc: 'Переименовывает файлы и папки с пробелами в имени (Мой файл.md → Мой_файл.md).',
         settingRestartNotice: 'Изменения вступят после перезагрузки Obsidian',
         labelSubfolders: 'Подпапки',
         labelNotes: 'Заметки',
@@ -54,6 +59,11 @@ const LANG = {
         settingIndexDesc: 'Automatically create and update folder index files.',
         settingIndexOnSave: 'Update index on save',
         settingIndexOnSaveDesc: 'Update the parent folder index file on save.',
+        settingDangerous: 'Dangerous features',
+        settingOverwrite: 'Overwrite all frontmatter',
+        settingOverwriteDesc: 'Removes non-standard fields from frontmatter (aliases, description, etc.). Enable only if you understand the consequences.',
+        settingSanitize: 'Remove spaces in names',
+        settingSanitizeDesc: 'Renames files and folders with spaces (My File.md → My_File.md).',
         settingRestartNotice: 'Changes will apply after restarting Obsidian',
         labelSubfolders: 'Subfolders',
         labelNotes: 'Notes',
@@ -93,6 +103,8 @@ interface ORDupdaterSettings {
     autoLinks: boolean;
     autoIndex: boolean;
     updateIndexOnSave: boolean;
+    overwriteMode: boolean;
+    sanitizeSpaces: boolean;
 }
 
 const DEFAULT_SETTINGS: ORDupdaterSettings = {
@@ -101,6 +113,8 @@ const DEFAULT_SETTINGS: ORDupdaterSettings = {
     autoLinks: true,
     autoIndex: true,
     updateIndexOnSave: true,
+    overwriteMode: false,
+    sanitizeSpaces: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -119,17 +133,19 @@ export default class OrdUpdater extends Plugin {
         await this.loadSettings();
 
         this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
-            // First pass: rename all folders with spaces
             const vault = this.app.vault;
-            const allFolders: TFolder[] = [];
-            const collect = (f: TFolder) => { allFolders.push(f); for (const c of f.children) if (c instanceof TFolder) collect(c); };
-            collect(vault.getRoot());
-            allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
-            for (const folder of allFolders) {
-                if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
-                if (folder.name.includes(' ')) {
-                    const newName = folder.name.replace(/\s+/g, '_');
-                    try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch { /* folder may already be renamed */ }
+            // Rename folders with spaces (only if setting enabled)
+            if (this.pluginSettings.sanitizeSpaces) {
+                const allFolders: TFolder[] = [];
+                const collect = (f: TFolder) => { allFolders.push(f); for (const c of f.children) if (c instanceof TFolder) collect(c); };
+                collect(vault.getRoot());
+                allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+                for (const folder of allFolders) {
+                    if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
+                    if (folder.name.includes(' ')) {
+                        const newName = folder.name.replace(/\s+/g, '_');
+                        try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch { /* folder may already be renamed */ }
+                    }
                 }
             }
             // Second pass: update all files
@@ -290,7 +306,7 @@ export default class OrdUpdater extends Plugin {
         if (expiry && Date.now() < expiry) return false;
 
         // Step 1: rename parent folder if it has spaces (before index check)
-        if (file.parent && file.parent.name.includes(' ')) {
+        if (this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
@@ -304,7 +320,7 @@ export default class OrdUpdater extends Plugin {
         if (file.parent && file.basename === file.parent.name) return false;
 
         // Step 2: rename file itself if it has spaces
-        if (file.name.includes(' ')) {
+        if (this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
             const newName = file.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
@@ -359,13 +375,11 @@ export default class OrdUpdater extends Plugin {
         const fm = this.parseFrontmatter(existingFM);
         const now = this.getTimestamp();
 
-        // Skip files with non-plugin frontmatter keys (description, permalink, aliases, etc.)
-        // These are structured documents (downloaded help pages, templates, etc.)
+        // Skip files with non-plugin frontmatter keys (when overwriteMode is off)
         const pluginKeys = new Set(['date', 'update', 'tags', 'links']);
         const existingKeys = new Set(fm.keys());
         const hasNonPluginKeys = [...existingKeys].some(k => !pluginKeys.has(k));
-        if (hasNonPluginKeys) {
-            // File has external frontmatter (description, aliases, permalink, etc.) — skip
+        if (hasNonPluginKeys && !this.pluginSettings.overwriteMode) {
             return false;
         }
 
@@ -638,6 +652,8 @@ class ORDupdaterSettingTab extends PluginSettingTab {
             { id: 'autoLinks', name: t('settingLinks'), desc: t('settingLinksDesc'), type: 'toggle' },
             { id: 'autoIndex', name: t('settingIndex'), desc: t('settingIndexDesc'), type: 'toggle' },
             { id: 'updateIndexOnSave', name: t('settingIndexOnSave'), desc: t('settingIndexOnSaveDesc'), type: 'toggle' },
+            { id: 'overwriteMode', name: t('settingOverwrite'), desc: t('settingOverwriteDesc'), type: 'toggle' },
+            { id: 'sanitizeSpaces', name: t('settingSanitize'), desc: t('settingSanitizeDesc'), type: 'toggle' },
         ];
     }
 
@@ -706,6 +722,31 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                 .onChange(async (val) => {
                     const s = this.plugin.getSettings();
                     s.updateIndexOnSave = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        containerEl.createEl('hr');
+        containerEl.createEl('h3', { text: t('settingDangerous') });
+
+        new Setting(containerEl)
+            .setName(t('settingOverwrite'))
+            .setDesc(t('settingOverwriteDesc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.getSettings().overwriteMode)
+                .onChange(async (val) => {
+                    const s = this.plugin.getSettings();
+                    s.overwriteMode = val;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
+            .setName(t('settingSanitize'))
+            .setDesc(t('settingSanitizeDesc'))
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.getSettings().sanitizeSpaces)
+                .onChange(async (val) => {
+                    const s = this.plugin.getSettings();
+                    s.sanitizeSpaces = val;
                     await this.plugin.saveSettings();
                 }));
     }

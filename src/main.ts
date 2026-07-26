@@ -381,7 +381,8 @@ export default class OrdUpdater extends Plugin {
             const original = this.parseFrontmatter(existingFM);
             fm.clear();
             for (const k of ['date', 'update']) {
-                if (original.has(k)) fm.set(k, original.get(k));
+                const v = original.get(k);
+                if (v !== undefined) fm.set(k, v);
             }
         }
 

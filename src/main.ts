@@ -359,6 +359,16 @@ export default class OrdUpdater extends Plugin {
         const fm = this.parseFrontmatter(existingFM);
         const now = this.getTimestamp();
 
+        // Skip files with non-plugin frontmatter keys (description, permalink, aliases, etc.)
+        // These are structured documents (downloaded help pages, templates, etc.)
+        const pluginKeys = new Set(['date', 'update', 'tags', 'links']);
+        const existingKeys = new Set(fm.keys());
+        const hasNonPluginKeys = [...existingKeys].some(k => !pluginKeys.has(k));
+        if (hasNonPluginKeys && !existingKeys.has('date')) {
+            // File has external frontmatter and hasn't been touched by this plugin yet — skip
+            return false;
+        }
+
         const tagName = file.parent ? file.parent.name : file.basename;
 
         const folderParts = file.parent ? file.parent.path.split('/').filter(Boolean) : [];

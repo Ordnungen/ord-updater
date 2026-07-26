@@ -656,19 +656,6 @@ export default class OrdUpdater extends Plugin {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.create(indexPath, content);
             }
-
-            // Clean up orphaned index files: have "index" tag, not the current index
-            const indexName = `${folder.name}.md`;
-            for (const c of children) {
-                if (!(c instanceof TFile) || c.extension !== 'md' || c.name === indexName) continue;
-                try {
-                    const raw = await vault.read(c);
-                    const fmMatch = raw.match(/^---\s*([\s\S]*?)\s*---/);
-                    if (fmMatch && fmMatch[1].includes('\n  - "index"')) {
-                        await this.app.fileManager.trashFile(c);
-                    }
-                } catch { /* skip unreadable */ }
-            }
         } catch (e) {
             console.error("ORDupdater:", String(e));
         }

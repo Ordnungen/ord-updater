@@ -203,10 +203,16 @@ export default class OrdUpdater extends Plugin {
             if (file instanceof TFolder) {
                 const oldName = oldPath.split('/').pop();
                 if (oldName && oldName !== file.name) {
-                    await new Promise(r => setTimeout(r, 50));
                     const stray = this.app.vault.getAbstractFileByPath(`${file.path}/${oldName}.md`);
+                    const target = this.app.vault.getAbstractFileByPath(`${file.path}/${file.name}.md`);
                     if (stray instanceof TFile) {
-                        await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
+                        if (target instanceof TFile) {
+                            await this.app.fileManager.trashFile(stray);
+                        } else {
+                            await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
+                        }
+                    } else if (!(target instanceof TFile)) {
+                        await this.updateFolderIndex(file);
                     }
                 }
                 if (file.parent) await this.updateFolderIndex(file.parent);

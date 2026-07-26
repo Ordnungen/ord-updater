@@ -1,9 +1,13 @@
-/* ORDupdater */
+/* ORDupdater — body class toggles via plugin setting */
 
-.ord-updater-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--font-small);
-    color: var(--text-muted);
+body.ord-updater-lock .metadata-container .metadata-add-button {
+    display: none !important;
+}
+
+body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-pill-remove-button {
+    display: none !important;
+}
+
+body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-pill {
+    padding-right: 0.7em !important;
 }

@@ -123,7 +123,6 @@ export default class OrdUpdater extends Plugin {
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
     private inBatch = false;
-    private lockStyle: HTMLStyleElement | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -287,10 +286,7 @@ export default class OrdUpdater extends Plugin {
 
     onunload(): void {
         this.processing.clear();
-        if (this.lockStyle) {
-            this.lockStyle.remove();
-            this.lockStyle = null;
-        }
+        document.body.classList.remove('ord-updater-lock');
     }
 
     async loadSettings(): Promise<void> {
@@ -307,19 +303,7 @@ export default class OrdUpdater extends Plugin {
     }
 
     private applyLockStyle(): void {
-        if (this.lockStyle) {
-            this.lockStyle.remove();
-            this.lockStyle = null;
-        }
-        if (this.pluginSettings.lockProperties) {
-            this.lockStyle = document.createElement('style');
-            this.lockStyle.textContent = `
-.metadata-container .metadata-add-button { display: none !important; }
-.markdown-preview-view .metadata-container .multi-select-pill-remove-button { display: none !important; }
-.markdown-preview-view .metadata-container .multi-select-pill { padding-right: 0.7em !important; }
-`;
-            document.head.appendChild(this.lockStyle);
-        }
+        document.body.classList.toggle('ord-updater-lock', this.pluginSettings.lockProperties);
     }
 
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
@@ -367,7 +351,7 @@ export default class OrdUpdater extends Plugin {
                 if (!this.processing.has(key)) {
                     this.processing.set(key, Date.now() + 5000);
                     window.setTimeout(async () => {
-                        try { await this.updateFolderIndex(file.parent!); } catch {}
+                        try { await this.updateFolderIndex(file.parent!); } catch { /* debounced, safe to skip */ }
                         this.processing.delete(key);
                     }, 1000);
                 }

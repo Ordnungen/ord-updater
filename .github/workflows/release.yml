@@ -23,8 +23,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF_NAME}"
+          gh release delete "$tag" --yes 2>/dev/null || true
           gh release create "$tag" \
             --title="$tag" \
             --notes "See [README](README.md) for details." \
-            --overwrite \
             main.js manifest.json styles.css

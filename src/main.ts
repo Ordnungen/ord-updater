@@ -203,6 +203,7 @@ export default class OrdUpdater extends Plugin {
             if (file instanceof TFolder) {
                 const oldName = oldPath.split('/').pop();
                 if (oldName && oldName !== file.name) {
+                    await new Promise(r => setTimeout(r, 50));
                     const stray = this.app.vault.getAbstractFileByPath(`${file.path}/${oldName}.md`);
                     if (stray instanceof TFile) {
                         await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);

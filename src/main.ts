@@ -645,7 +645,8 @@ export default class OrdUpdater extends Plugin {
                 if (!(c instanceof TFile) || c.extension !== 'md' || c.name === indexName) continue;
                 try {
                     const raw = await vault.read(c);
-                    if (raw.includes('- "index"') || raw.includes('- "index"\n')) {
+                    const fmMatch = raw.match(/^---\s*([\s\S]*?)\s*---/);
+                    if (fmMatch && (fmMatch[1].includes('\n  - "index"') || fmMatch[1].includes('  - "index"\n'))) {
                         await this.app.fileManager.trashFile(c);
                     }
                 } catch { /* skip unreadable */ }

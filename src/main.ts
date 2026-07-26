@@ -375,12 +375,14 @@ export default class OrdUpdater extends Plugin {
         const fm = this.parseFrontmatter(existingFM);
         const now = this.getTimestamp();
 
-        // Skip files with non-plugin frontmatter keys (when overwriteMode is off)
-        const pluginKeys = new Set(['date', 'update', 'tags', 'links']);
-        const existingKeys = new Set(fm.keys());
-        const hasNonPluginKeys = [...existingKeys].some(k => !pluginKeys.has(k));
-        if (hasNonPluginKeys && !this.pluginSettings.overwriteMode) {
-            return false;
+        if (this.pluginSettings.overwriteMode) {
+            // Overwrite mode: keep only plugin-managed fields, remove the rest
+            const managed = new Set(['date', 'update', 'tags', 'links']);
+            const original = this.parseFrontmatter(existingFM);
+            fm.clear();
+            for (const k of ['date', 'update']) {
+                if (original.has(k)) fm.set(k, original.get(k));
+            }
         }
 
         const tagName = file.parent ? file.parent.name : file.basename;

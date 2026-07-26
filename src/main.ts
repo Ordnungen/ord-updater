@@ -313,14 +313,22 @@ export default class OrdUpdater extends Plugin {
         if (expiry && Date.now() < expiry) return false;
 
         // Step 1: rename parent folder if it has spaces
+        const renameWithDelay = async (fn: () => Promise<void>) => {
+            if (isManual) {
+                await fn();
+            } else {
+                window.setTimeout(async () => {
+                    try { await fn(); } catch {}
+                }, 800);
+            }
+        };
+
         if (this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
-            try {
+            await renameWithDelay(async () => {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
-                return true;
-            } catch (e) {
-                console.error("ORDupdater: rename folder failed", file.parent.path, String(e));
-            }
+            });
+            if (isManual) return true;
         }
 
         // Step 2: skip index files

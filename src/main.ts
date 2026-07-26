@@ -649,9 +649,7 @@ export default class OrdUpdater extends Plugin {
                     if (!fmMatch) continue;
                     // Orphaned index = has "index" tag OR has date+update+tags+links but basename ≠ parent
                     const fm = fmMatch[1];
-                    if (fm.includes('\n  - "index"') || fm.includes('  - "index"\n')) {
-                        await this.app.fileManager.trashFile(c);
-                    } else if (fm.includes('\ndate:') && fm.includes('\nupdate:') && fm.includes('\ntags:') && fm.includes('\nlinks:')) {
+                    if (fm.includes('\n  - "index"') || (fm.includes('date:') && fm.includes('\nupdate:') && fm.includes('\ntags:') && fm.includes('\nlinks:'))) {
                         await this.app.fileManager.trashFile(c);
                     }
                 } catch { /* skip unreadable */ }

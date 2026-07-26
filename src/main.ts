@@ -364,8 +364,8 @@ export default class OrdUpdater extends Plugin {
         const pluginKeys = new Set(['date', 'update', 'tags', 'links']);
         const existingKeys = new Set(fm.keys());
         const hasNonPluginKeys = [...existingKeys].some(k => !pluginKeys.has(k));
-        if (hasNonPluginKeys && !existingKeys.has('date')) {
-            // File has external frontmatter and hasn't been touched by this plugin yet — skip
+        if (hasNonPluginKeys) {
+            // File has external frontmatter (description, aliases, permalink, etc.) — skip
             return false;
         }
 

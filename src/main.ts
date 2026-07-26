@@ -312,8 +312,8 @@ export default class OrdUpdater extends Plugin {
         const expiry = this.processing.get(file.path);
         if (expiry && Date.now() < expiry) return false;
 
-        // Step 1: rename parent folder if it has spaces (before index check)
-        if (this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
+        // Step 1: rename parent folder if it has spaces (only manual — breaks Obsidian open on auto)
+        if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
@@ -326,8 +326,8 @@ export default class OrdUpdater extends Plugin {
         // Step 2: skip index files
         if (file.parent && file.basename === file.parent.name) return false;
 
-        // Step 2: rename file itself if it has spaces
-        if (this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
+        // Step 2: rename file itself if it has spaces (only manual)
+        if (isManual && this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
             const newName = file.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
@@ -639,17 +639,14 @@ export default class OrdUpdater extends Plugin {
                 await vault.create(indexPath, content);
             }
 
-            // Clean up orphaned index files: have frontmatter but not the current index
+            // Clean up orphaned index files: have "index" tag, not the current index
             const indexName = `${folder.name}.md`;
             for (const c of children) {
                 if (!(c instanceof TFile) || c.extension !== 'md' || c.name === indexName) continue;
                 try {
                     const raw = await vault.read(c);
                     const fmMatch = raw.match(/^---\s*([\s\S]*?)\s*---/);
-                    if (!fmMatch) continue;
-                    // Orphaned index = has "index" tag OR has date+update+tags+links but basename ≠ parent
-                    const fm = fmMatch[1];
-                    if (fm.includes('\n  - "index"') || (fm.includes('date:') && fm.includes('\nupdate:') && fm.includes('\ntags:') && fm.includes('\nlinks:'))) {
+                    if (fmMatch && fmMatch[1].includes('\n  - "index"')) {
                         await this.app.fileManager.trashFile(c);
                     }
                 } catch { /* skip unreadable */ }

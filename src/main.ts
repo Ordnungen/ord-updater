@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -73,13 +73,8 @@ const LANG = {
 
 type LangKey = keyof typeof LANG.en;
 
-function getObsidianLang(): string {
-    try { return (window as any).localStorage.getItem('language') || navigator.language || 'en'; }
-    catch { return navigator.language || 'en'; }
-}
-
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang = getObsidianLang().startsWith('ru') ? 'ru' : 'en';
+    const lang = getLanguage?.()?.startsWith('ru') ? 'ru' : 'en';
     let text = (LANG[lang]?.[key] ?? LANG.en[key]);
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
@@ -90,7 +85,7 @@ function t(key: LangKey, replacements?: Record<string, string>): string {
 }
 
 function isRu(): boolean {
-    return getObsidianLang().startsWith('ru');
+    return getLanguage?.()?.startsWith('ru') ?? false;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,7 +379,6 @@ export default class OrdUpdater extends Plugin {
 
         if (this.pluginSettings.overwriteMode) {
             // Overwrite mode: keep only plugin-managed fields, remove the rest
-            const managed = new Set(['date', 'update', 'tags', 'links']);
             const original = this.parseFrontmatter(existingFM);
             fm.clear();
             for (const k of ['date', 'update']) {
@@ -742,8 +736,9 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        containerEl.createEl('hr');
-        containerEl.createEl('h3', { text: t('settingDangerous') });
+        new Setting(containerEl)
+            .setName(t('settingDangerous'))
+            .setHeading();
 
         new Setting(containerEl)
             .setName(t('settingOverwrite'))

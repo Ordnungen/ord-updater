@@ -200,26 +200,34 @@ export default class OrdUpdater extends Plugin {
         }
 
         this.registerEvent(this.app.vault.on('rename', async (file: TAbstractFile, oldPath: string) => {
-            if (!(file instanceof TFolder)) return;
-            const oldFolderName = oldPath.split('/').pop();
-            if (!oldFolderName) return;
-            // After folder rename, the old index file is now at new_path/old_name.md
-            // Rename it to new_path/new_name.md instead of creating a duplicate
-            const strayPath = `${file.path}/${oldFolderName}.md`;
-            const stray = this.app.vault.getAbstractFileByPath(strayPath);
-            if (stray instanceof TFile) {
-                try {
-                    await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
-                } catch {
-                    // If rename fails, delete old and create fresh
-                    await this.app.fileManager.trashFile(stray);
-                    await this.updateFolderIndex(file);
+            // Handle folder rename: orphaned index file needs renaming
+            if (file instanceof TFolder) {
+                const oldFolderName = oldPath.split('/').pop();
+                if (oldFolderName && oldFolderName !== file.name) {
+                    const strayPath = `${file.path}/${oldFolderName}.md`;
+                    const stray = this.app.vault.getAbstractFileByPath(strayPath);
+                    if (stray instanceof TFile) {
+                        try {
+                            await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
+                        } catch {
+                            await this.app.fileManager.trashFile(stray);
+                            await this.updateFolderIndex(file);
+                        }
+                    } else {
+                        await this.updateFolderIndex(file);
+                    }
+                    if (file.parent) await this.updateFolderIndex(file.parent);
                 }
-            } else {
-                await this.updateFolderIndex(file);
+                return;
             }
-            if (file.parent) {
-                await this.updateFolderIndex(file.parent);
+            // Handle file rename: if orphaned index (basename != parent name), re-rename
+            if (file instanceof TFile && file.extension === 'md' && file.parent) {
+                const oldName = oldPath.split('/').pop()?.replace('.md', '');
+                if (oldName && oldName === oldPath.split('/').slice(-2, -1)[0] && file.basename !== file.parent.name) {
+                    try {
+                        await this.app.vault.rename(file, `${file.parent.path}/${file.parent.name}.md`);
+                    } catch { /* already handled by folder handler */ }
+                }
             }
         }));
 
@@ -599,6 +607,7 @@ export default class OrdUpdater extends Plugin {
             content += `update: ${now}\n`;
             content += 'tags:\n';
             content += `  - "${tagName}"\n`;
+            content += '  - "index"\n';
             if (folderLinks.length > 0) {
                 content += 'links:\n';
                 for (const link of folderLinks) {

@@ -1,6 +1,6 @@
 ---
 date: 2026-07-26 08:46
-update: 2026-07-26 08:46
+update: 2026-07-26 09:05
 tags: ["ord-updater"]
 links: ["[[1_Репозиторий]]", "[[Проекты]]", "[[ORDcod]]", "[[obsidian_plugins]]", "[[ord-updater]]"]
 ---
@@ -24,6 +24,7 @@ ORDupdater automatically manages frontmatter properties for your Obsidian notes.
 - **i18n** — interface adapts to Obsidian language (RU/EN)
 - **Batch processing** — parallel updates for large vaults (20 files at once)
 - **Hidden folders** — skips `.git`, `.obsidian`, and other hidden paths
+- **Space sanitization** — automatically renames files and folders with spaces (`My File.md` → `My_File.md`) on update
 
 ### Installation
 
@@ -66,6 +67,7 @@ ORDupdater автоматически обновляет Properties (date, updat
 - **Индексные файлы** — `Папка.md` со списком содержимого
 - **Пакетная обработка** — 20 файлов параллельно
 - **Скрытые папки** — `.git`, `.obsidian` игнорируются
+- **Очистка пробелов** — автоматически переименовывает файлы и папки с пробелами (`Мой файл.md` → `Мой_файл.md`)
 
 ### Установка
 

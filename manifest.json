@@ -3,7 +3,7 @@
   "name": "ORDupdater",
   "version": "1.0.0",
   "minAppVersion": "1.7.2",
-  "description": "Automatically updates frontmatter properties based on folder structure.",
+  "description": "Automatically updates frontmatter properties based on folder structure. Renames files and folders with spaces.",
   "author": "Ordnung",
   "authorUrl": "https://github.com/Ordnungen",
   "fundingUrl": "https://github.com/Ordnungen",

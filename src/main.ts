@@ -332,6 +332,17 @@ export default class OrdUpdater extends Plugin {
             if (changed && isManual && this.pluginSettings.updateIndexOnSave && file.parent) {
                 await this.updateFolderIndex(file.parent);
             }
+            if (changed && !isManual && this.pluginSettings.autoIndex && file.parent) {
+                // Auto-events: debounce index update to avoid excessive writes
+                const key = `idx:${file.parent.path}`;
+                if (!this.processing.has(key)) {
+                    this.processing.set(key, Date.now() + 5000);
+                    window.setTimeout(async () => {
+                        try { await this.updateFolderIndex(file.parent!); } catch {}
+                        this.processing.delete(key);
+                    }, 1000);
+                }
+            }
             return changed;
         } catch {
             console.error("ORDupdater: error");

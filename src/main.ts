@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage, requireApiVersion } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -63,8 +63,13 @@ const LANG = {
 
 type LangKey = keyof typeof LANG.en;
 
+function getObsidianLang(): string {
+    try { return (window as any).localStorage.getItem('language') || navigator.language || 'en'; }
+    catch { return navigator.language || 'en'; }
+}
+
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang = requireApiVersion?.('1.7.2') && getLanguage?.() === 'ru' ? 'ru' : 'en';
+    const lang = getObsidianLang().startsWith('ru') ? 'ru' : 'en';
     let text = (LANG[lang]?.[key] ?? LANG.en[key]);
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
@@ -75,7 +80,7 @@ function t(key: LangKey, replacements?: Record<string, string>): string {
 }
 
 function isRu(): boolean {
-    return requireApiVersion?.('1.7.2') && getLanguage?.() === 'ru';
+    return getObsidianLang().startsWith('ru');
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +129,7 @@ export default class OrdUpdater extends Plugin {
                 if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
                 if (folder.name.includes(' ')) {
                     const newName = folder.name.replace(/\s+/g, '_');
-                    try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch {}
+                    try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch { /* folder may already be renamed */ }
                 }
             }
             // Second pass: update all files
@@ -255,7 +260,7 @@ export default class OrdUpdater extends Plugin {
         this.addSettingTab(new ORDupdaterSettingTab(this.app, this));
     }
 
-    async onunload(): Promise<void> {
+    onunload(): void {
         this.processing.clear();
     }
 
@@ -610,6 +615,16 @@ class ORDupdaterSettingTab extends PluginSettingTab {
     constructor(app: App, plugin: OrdUpdater) {
         super(app, plugin);
         this.plugin = plugin;
+    }
+
+    getSettingDefinitions(): any[] {
+        return [
+            { id: 'autoUpdate', name: t('settingAutoUpdate'), desc: t('settingAutoUpdateDesc'), type: 'toggle' },
+            { id: 'autoTags', name: t('settingTags'), desc: t('settingTagsDesc'), type: 'toggle' },
+            { id: 'autoLinks', name: t('settingLinks'), desc: t('settingLinksDesc'), type: 'toggle' },
+            { id: 'autoIndex', name: t('settingIndex'), desc: t('settingIndexDesc'), type: 'toggle' },
+            { id: 'updateIndexOnSave', name: t('settingIndexOnSave'), desc: t('settingIndexOnSaveDesc'), type: 'toggle' },
+        ];
     }
 
     display(): void {

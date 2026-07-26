@@ -311,6 +311,8 @@ export default class OrdUpdater extends Plugin {
         // Skip hidden files and any file inside hidden folders
         const pathParts = file.path.split('/');
         if (pathParts.some(p => p.startsWith('.'))) return false;
+        // Skip files in node_modules
+        if (pathParts.includes('node_modules')) return false;
         // Skip README.md — used for GitHub/community page, don't add frontmatter
         if (file.name.toLowerCase() === 'readme.md') return false;
         const expiry = this.processing.get(file.path);
@@ -556,8 +558,9 @@ export default class OrdUpdater extends Plugin {
 
     private async updateFolderIndex(folder: TFolder): Promise<void> {
         if (folder.path.split('/').some(p => p.startsWith('.'))) return;
-        // Skip plugin directories (containing manifest.json)
-        if (folder.children.some(c => c instanceof TFile && c.name === 'manifest.json')) return;
+        if (folder.path.includes('/node_modules/') || folder.path === 'node_modules') return;
+        // Skip plugin directories (containing manifest.json or package.json)
+        if (folder.children.some(c => c instanceof TFile && (c.name === 'manifest.json' || c.name === 'package.json'))) return;
         try {
             const vault = this.app.vault;
             const indexPath = `${folder.path}/${folder.name}.md`;

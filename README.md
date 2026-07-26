@@ -1,6 +1,6 @@
 ---
 date: 2026-07-26 08:46
-update: 2026-07-26 17:39
+update: 2026-07-26 19:16
 tags:
   - "ord-updater"
 links:
@@ -22,6 +22,8 @@ Automatically updates frontmatter (Properties) in Obsidian notes based on folder
 ORDupdater automatically manages frontmatter properties for your Obsidian notes. It reads the folder structure and updates `date`, `update`, `tags`, and `links` properties accordingly.
 
 ### Features
+
+![ORDupdater properties management](ordupdater_properties.png)
 
 - **Auto-tags** — tag is determined by the parent folder name
 - **Auto-links** — backlinks to all parent folders in the hierarchy

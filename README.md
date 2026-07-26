@@ -1,6 +1,6 @@
 ---
-date: 2026-07-26 19:43
-update: 2026-07-26 19:43
+date: 2026-07-26 21:05
+update: 2026-07-26 21:05
 tags:
   - "ord-updater"
 links:
@@ -13,9 +13,9 @@ links:
 
 # ORDupdater
 
-> Automatically manages frontmatter properties based on folder structure. Creates and maintains folder index files.
+*Automatically manages frontmatter properties based on folder structure. Creates and maintains folder index files.*
 
-![ORDupdater properties](ordupdater_properties.png)
+![ORDupdater properties management](ordupdater-properties-main.png)
 
 ## Features
 
@@ -29,7 +29,7 @@ links:
 | **Batch mode** | Processes 20 files in parallel for large vaults |
 | **Safe** | Skips hidden folders (`.obsidian`, `.git`), Excalidraw, and index files |
 
-### Optional
+### Optional features
 
 | Feature | Default | Description |
 |---------|---------|-------------|
@@ -40,11 +40,11 @@ links:
 ## Installation
 
 **Community plugins:**
+
 1. Settings → Community plugins → Browse → **ORDupdater**
 2. Install & Enable
 
-**Manual:**
-Copy `main.js`, `manifest.json`, `styles.css` to `.obsidian/plugins/ord-updater/`.
+**Manual:** Copy `main.js`, `manifest.json`, `styles.css` to `.obsidian/plugins/ord-updater/`.
 
 ## Usage
 
@@ -69,7 +69,9 @@ Copy `main.js`, `manifest.json`, `styles.css` to `.obsidian/plugins/ord-updater/
 | Overwrite mode | Strip non-standard fields (forces Auto-tags, Auto-links, Lock) |
 | Sanitize spaces | Rename files/folders with spaces |
 
-## Frontmatter example
+## Examples
+
+**Frontmatter added by the plugin:**
 
 ```yaml
 ---
@@ -83,9 +85,7 @@ links:
 ---
 ```
 
-## Folder index example
-
-`Notes/Ideas/Ideas.md` is automatically created with:
+**Folder index file (`Folder.md`):**
 
 ```yaml
 ---
@@ -99,7 +99,7 @@ links:
 
 ## Notes
 
-- [[TraiderBot]] _(date: 2026-07-22 | tags: Ideas | update: 2026-07-26)_
+- [[My Note]] _(date: 2026-07-22 | tags: Ideas)_
 ```
 
 ## Development

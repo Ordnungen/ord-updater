@@ -639,14 +639,19 @@ export default class OrdUpdater extends Plugin {
                 await vault.create(indexPath, content);
             }
 
-            // Clean up orphaned index files (have "index" tag, not the current index)
+            // Clean up orphaned index files: have frontmatter but not the current index
             const indexName = `${folder.name}.md`;
             for (const c of children) {
                 if (!(c instanceof TFile) || c.extension !== 'md' || c.name === indexName) continue;
                 try {
                     const raw = await vault.read(c);
                     const fmMatch = raw.match(/^---\s*([\s\S]*?)\s*---/);
-                    if (fmMatch && (fmMatch[1].includes('\n  - "index"') || fmMatch[1].includes('  - "index"\n'))) {
+                    if (!fmMatch) continue;
+                    // Orphaned index = has "index" tag OR has date+update+tags+links but basename ≠ parent
+                    const fm = fmMatch[1];
+                    if (fm.includes('\n  - "index"') || fm.includes('  - "index"\n')) {
+                        await this.app.fileManager.trashFile(c);
+                    } else if (fm.includes('\ndate:') && fm.includes('\nupdate:') && fm.includes('\ntags:') && fm.includes('\nlinks:')) {
                         await this.app.fileManager.trashFile(c);
                     }
                 } catch { /* skip unreadable */ }

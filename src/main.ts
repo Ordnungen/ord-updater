@@ -33,9 +33,6 @@ const LANG = {
         settingSanitize: 'Убирать пробелы в именах',
         settingSanitizeDesc: 'Переименовывает файлы и папки с пробелами в имени (Мой файл.md → Мой_файл.md).',
         settingRestartNotice: 'Изменения вступят после перезагрузки Obsidian',
-        labelSubfolders: 'Подпапки',
-        labelNotes: 'Заметки',
-        labelEmpty: 'Пусто',
     },
     en: {
         ribbonTooltip: 'ORDupdater: update properties',
@@ -65,9 +62,6 @@ const LANG = {
         settingSanitize: 'Remove spaces in names',
         settingSanitizeDesc: 'Renames files and folders with spaces (My File.md → My_File.md).',
         settingRestartNotice: 'Changes will apply after restarting Obsidian',
-        labelSubfolders: 'Subfolders',
-        labelNotes: 'Notes',
-        labelEmpty: 'Empty',
     },
 };
 
@@ -616,12 +610,12 @@ export default class OrdUpdater extends Plugin {
             }
             content += '---\n\n';
             if (subfolders.length) {
-                content += `## ${isRu() ? 'Подпапки' : 'Subfolders'}\n\n${subfolders.join('\n')}\n\n`;
+                content += `## Subfolders\n\n${subfolders.join('\n')}\n\n`;
             }
             if (notes.length) {
-                content += `## ${isRu() ? 'Заметки' : 'Notes'}\n\n${notes.join('\n')}\n`;
+                content += `## Notes\n\n${notes.join('\n')}\n`;
             } else if (subfolders.length === 0) {
-                content += `_${isRu() ? 'Пусто' : 'Empty'}_\n`;
+                content += `_Empty_\n`;
             }
 
             const existing = vault.getAbstractFileByPath(indexPath);

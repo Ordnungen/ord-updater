@@ -312,50 +312,32 @@ export default class OrdUpdater extends Plugin {
         const expiry = this.processing.get(file.path);
         if (expiry && Date.now() < expiry) return false;
 
-        // Step 1: rename parent folder if it has spaces
-        const renameWithDelay = async (fn: () => Promise<void>) => {
-            if (isManual) {
-                await fn();
-            } else {
-                window.setTimeout(async () => {
-                    try { await fn(); } catch {}
-                }, 800);
-            }
-        };
-
-        if (this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
+        // Step 1: rename parent folder if it has spaces (only manual)
+        if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
-            await renameWithDelay(async () => {
+            try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
-            });
-            if (isManual) return true;
+                return true;
+            } catch (e) {
+                console.error("ORDupdater: rename folder failed", String(e));
+            }
         }
 
         // Step 2: skip index files
         if (file.parent && file.basename === file.parent.name) return false;
 
-        // Step 2: rename file itself if it has spaces
-        if (this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
-            const doRename = async () => {
-                const newName = file.name.replace(/\s+/g, '_');
-                try {
-                    await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
-                } catch (e) {
-                    console.error("ORDupdater: rename failed", String(e));
-                }
-            };
-            if (isManual) {
-                await doRename();
+        // Step 3: rename file itself if it has spaces (only manual)
+        if (isManual && this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
+            const newName = file.name.replace(/\s+/g, '_');
+            try {
+                await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
                 return true;
-            } else {
-                window.setTimeout(async () => {
-                    const fresh = this.app.vault.getAbstractFileByPath(file.path);
-                    if (fresh instanceof TFile) await doRename();
-                }, 500);
+            } catch (e) {
+                console.error("ORDupdater: rename failed", String(e));
             }
         }
 
-        // Step 3: update frontmatter
+        // Step 4: update frontmatter
         try {
             const changed = await this.updateFrontmatter(file);
             if (changed && isManual && this.pluginSettings.updateIndexOnSave && file.parent) {

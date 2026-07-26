@@ -203,22 +203,21 @@ export default class OrdUpdater extends Plugin {
             if (!(file instanceof TFolder)) return;
             const oldFolderName = oldPath.split('/').pop();
             if (!oldFolderName) return;
-            // Rename old index file to new name instead of deleting+creating
-            const oldIndexPath = `${oldPath}/${oldFolderName}.md`;
-            const oldIndex = this.app.vault.getAbstractFileByPath(oldIndexPath);
-            const newIndexPath = `${file.path}/${file.name}.md`;
-            if (oldIndex instanceof TFile) {
+            // After folder rename, the old index file is now at new_path/old_name.md
+            // Rename it to new_path/new_name.md instead of creating a duplicate
+            const strayPath = `${file.path}/${oldFolderName}.md`;
+            const stray = this.app.vault.getAbstractFileByPath(strayPath);
+            if (stray instanceof TFile) {
                 try {
-                    await this.app.vault.rename(oldIndex, newIndexPath);
+                    await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
                 } catch {
-                    // If rename fails (e.g. file exists), delete old and create fresh
-                    await this.app.fileManager.trashFile(oldIndex);
+                    // If rename fails, delete old and create fresh
+                    await this.app.fileManager.trashFile(stray);
                     await this.updateFolderIndex(file);
                 }
             } else {
                 await this.updateFolderIndex(file);
             }
-            // Update parent folder index
             if (file.parent) {
                 await this.updateFolderIndex(file.parent);
             }

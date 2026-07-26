@@ -248,8 +248,8 @@ export default class OrdUpdater extends Plugin {
                                     const newName = file.name.replace(/\s+/g, '_');
                                     try {
                                         await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
-                                    } catch (e) {
-                                        console.error("ORDupdater: rename failed", file.path, String(e));
+                                    } catch {
+                                        console.error("ORDupdater: rename failed");
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
@@ -313,7 +313,7 @@ export default class OrdUpdater extends Plugin {
             try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
                 return true;
-            } catch (e) {
+            } catch {
                 console.error("ORDupdater: rename folder failed", String(e));
             }
         }
@@ -327,8 +327,8 @@ export default class OrdUpdater extends Plugin {
             try {
                 await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
                 return true;
-            } catch (e) {
-                console.error("ORDupdater: rename failed", String(e));
+            } catch {
+                console.error("ORDupdater: rename failed");
             }
         }
 
@@ -339,8 +339,8 @@ export default class OrdUpdater extends Plugin {
                 await this.updateFolderIndex(file.parent);
             }
             return changed;
-        } catch (e) {
-            console.error("ORDupdater:", String(e));
+        } catch {
+            console.error("ORDupdater: error");
             return false;
         }
     }
@@ -632,8 +632,8 @@ export default class OrdUpdater extends Plugin {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.create(indexPath, content);
             }
-        } catch (e) {
-            console.error("ORDupdater:", String(e));
+        } catch {
+            console.error("ORDupdater: error");
         }
     }
 
@@ -656,7 +656,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
-    getSettingDefinitions(): any[] {
+    getSettingDefinitions(): Record<string, unknown>[] {
         return [
             { id: 'autoUpdate', name: t('settingAutoUpdate'), desc: t('settingAutoUpdateDesc'), type: 'toggle' },
             { id: 'autoTags', name: t('settingTags'), desc: t('settingTagsDesc'), type: 'toggle' },

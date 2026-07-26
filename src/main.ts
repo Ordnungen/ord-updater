@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS: ORDupdaterSettings = {
 export default class OrdUpdater extends Plugin {
     private processing: Map<string, number> = new Map();
     private readonly DEBOUNCE_MS = 3000;
-    private settings: ORDupdaterSettings = DEFAULT_SETTINGS;
+    private pluginSettings: ORDupdaterSettings = DEFAULT_SETTINGS;
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
     private inBatch = false;
@@ -135,7 +135,7 @@ export default class OrdUpdater extends Plugin {
             // Second pass: update all files
             const files = vault.getMarkdownFiles();
             const count = await this.batchUpdate(files, true);
-            if (this.settings.autoIndex) {
+            if (this.pluginSettings.autoIndex) {
                 const root = vault.getRoot();
                 const allFolders2: TFolder[] = [];
                 const collect2 = (f: TFolder) => { allFolders2.push(f); for (const c of f.children) if (c instanceof TFolder) collect2(c); };
@@ -174,7 +174,7 @@ export default class OrdUpdater extends Plugin {
             },
         });
 
-        if (this.settings.autoUpdate) {
+        if (this.pluginSettings.autoUpdate) {
             this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) =>
                 this.safeUpdate(file, false)));
             this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile) =>
@@ -231,7 +231,7 @@ export default class OrdUpdater extends Plugin {
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
                                 const count = await this.batchUpdate(files, false);
-                                if (this.settings.autoIndex) {
+                                if (this.pluginSettings.autoIndex) {
                                     const allFolders = this.getAllSubfolders(file);
                                     allFolders.push(file);
                                     allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
@@ -265,15 +265,15 @@ export default class OrdUpdater extends Plugin {
     }
 
     async loadSettings(): Promise<void> {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.pluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     }
 
     async saveSettings(): Promise<void> {
-        await this.saveData(this.settings);
+        await this.saveData(this.pluginSettings);
     }
 
     getSettings(): ORDupdaterSettings {
-        return this.settings;
+        return this.pluginSettings;
     }
 
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
@@ -312,7 +312,7 @@ export default class OrdUpdater extends Plugin {
         // Step 3: update frontmatter
         try {
             const changed = await this.updateFrontmatter(file);
-            if (changed && isManual && this.settings.updateIndexOnSave && file.parent) {
+            if (changed && isManual && this.pluginSettings.updateIndexOnSave && file.parent) {
                 await this.updateFolderIndex(file.parent);
             }
             return changed;
@@ -371,13 +371,13 @@ export default class OrdUpdater extends Plugin {
         }
         fm.set('update', now);
 
-        if (this.settings.autoTags) {
+        if (this.pluginSettings.autoTags) {
             fm.set('tags', [tagName]);
         } else if (fm.has('tags') && !this.isUserTag(fm, file.parent ? file.parent.path.split('/') : [])) {
             fm.delete('tags');
         }
 
-        if (this.settings.autoLinks) {
+        if (this.pluginSettings.autoLinks) {
             if (folderLinks.length > 0) {
                 fm.set('links', folderLinks);
             }
@@ -586,7 +586,7 @@ export default class OrdUpdater extends Plugin {
             }
 
             const existing = vault.getAbstractFileByPath(indexPath);
-            if (existing && !(existing instanceof TFolder)) {
+            if (existing instanceof TFile) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.modify(existing, content);
             } else if (!existing) {

@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage, requireApiVersion } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -64,8 +64,8 @@ const LANG = {
 type LangKey = keyof typeof LANG.en;
 
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang = getLanguage?.() === 'ru' ? 'ru' : 'en';
-    let text = (LANG[lang]?.[key] ?? LANG.en[key]) as string;
+    const lang = requireApiVersion?.('1.7.2') && getLanguage?.() === 'ru' ? 'ru' : 'en';
+    let text = (LANG[lang]?.[key] ?? LANG.en[key]);
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
             text = text.replace(`__${k}__`, v);
@@ -75,7 +75,7 @@ function t(key: LangKey, replacements?: Record<string, string>): string {
 }
 
 function isRu(): boolean {
-    return getLanguage?.() === 'ru';
+    return requireApiVersion?.('1.7.2') && getLanguage?.() === 'ru';
 }
 
 // ---------------------------------------------------------------------------
@@ -185,12 +185,12 @@ export default class OrdUpdater extends Plugin {
             const oldIndexPath = `${oldPath}/${oldFolderName}.md`;
             const oldIndex = this.app.vault.getAbstractFileByPath(oldIndexPath);
             if (oldIndex instanceof TFile) {
-                await this.app.vault.delete(oldIndex);
+                await this.app.fileManager.trashFile(oldIndex);
             }
             const strayPath = `${file.path}/${oldFolderName}.md`;
             const stray = this.app.vault.getAbstractFileByPath(strayPath);
             if (stray instanceof TFile && stray !== oldIndex) {
-                await this.app.vault.delete(stray);
+                await this.app.fileManager.trashFile(stray);
             }
             await this.updateFolderIndex(file);
             if (file.parent) {
@@ -200,7 +200,7 @@ export default class OrdUpdater extends Plugin {
 
         this.registerDomEvent(document, 'keydown', async (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                setTimeout(async () => {
+                window.setTimeout(async () => {
                     const file = this.app.workspace.getActiveFile();
                     if (file) await this.safeUpdate(file, true);
                 }, 200);
@@ -221,7 +221,7 @@ export default class OrdUpdater extends Plugin {
                                     try {
                                         await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
                                     } catch (e) {
-                                        console.error('ORDupdater: rename failed', file.path, e);
+                                        console.error("ORDupdater: rename failed", file.path, String(e));
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
@@ -286,7 +286,7 @@ export default class OrdUpdater extends Plugin {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
                 return true;
             } catch (e) {
-                console.error('ORDupdater: rename folder failed', file.parent.path, e);
+                console.error("ORDupdater: rename folder failed", file.parent.path, String(e));
             }
         }
 
@@ -300,7 +300,7 @@ export default class OrdUpdater extends Plugin {
                 await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
                 return true;
             } catch (e) {
-                console.error('ORDupdater: rename failed', file.path, e);
+                console.error("ORDupdater: rename failed", file.path, String(e));
             }
         }
 
@@ -312,7 +312,7 @@ export default class OrdUpdater extends Plugin {
             }
             return changed;
         } catch (e) {
-            console.error('ORDupdater:', e);
+            console.error("ORDupdater:", String(e));
             return false;
         }
     }
@@ -583,13 +583,13 @@ export default class OrdUpdater extends Plugin {
             const existing = vault.getAbstractFileByPath(indexPath);
             if (existing && !(existing instanceof TFolder)) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
-                await vault.modify(existing as TFile, content);
+                await vault.modify(existing, content);
             } else if (!existing) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.create(indexPath, content);
             }
         } catch (e) {
-            console.error('ORDupdater:', e);
+            console.error("ORDupdater:", String(e));
         }
     }
 
@@ -615,9 +615,14 @@ class ORDupdaterSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: t('settingsTab') });
 
-        containerEl.createEl('h3', { text: t('settingsGeneral') });
+        new Setting(containerEl)
+            .setName(t('settingsTab'))
+            .setHeading();
+
+        new Setting(containerEl)
+            .setName(t('settingsGeneral'))
+            .setHeading();
 
         new Setting(containerEl)
             .setName(t('settingAutoUpdate'))

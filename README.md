@@ -1,69 +1,88 @@
 ---
-date: 2026-07-26 03:53
-update: 2026-07-26 08:12
-ord_updater: true
+date: 2026-07-26 08:46
+update: 2026-07-26 08:46
 tags: ["ord-updater"]
 links: ["[[1_Репозиторий]]", "[[Проекты]]", "[[ORDcod]]", "[[obsidian_plugins]]", "[[ord-updater]]"]
 ---
 
 # ORDupdater
 
-Автоматически обновляет frontmatter (Properties) в заметках Obsidian на основе структуры папок.
+Automatically updates frontmatter (Properties) in Obsidian notes based on folder structure.
 
-## Возможности
+**Keywords:** frontmatter, properties, tags, links, folder structure, metadata
 
-- **Автообновление тегов** — тег определяется по имени папки, в которой лежит заметка (первой не-цифровой папки от корня)
-- **Автообновление ссылок** — обратные `[[links]]` строятся по полному пути в иерархии папок
-- **Обновление дат** — `date` при первом сохранении, `update` — при каждом изменении
-- **Пропуск служебных файлов** — не трогает Excalidraw-заметки и индексные файлы (с именем папки)
-- **Индексные файлы** — автоматически создаёт и обновляет `Папка.md` со списком подпапок и файлов
+## English
 
-## Использование
+ORDupdater automatically manages frontmatter properties for your Obsidian notes. It reads the folder structure and updates `date`, `update`, `tags`, and `links` properties accordingly.
 
-Плагин работает автоматически:
-- При создании, изменении или переименовании заметки
-- При сохранении через Ctrl+S (дополнительно обновляет индекс папки)
+### Features
 
-Также доступно через контекстное меню:
-- Правый клик на папке → «Обновить Свойства (папка)» — рекурсивно обновить все файлы
-- Правый клик на файле → «Обновить Свойства (файл)» — обновить один файл
+- **Auto-tags** — tag is determined by the parent folder name
+- **Auto-links** — backlinks to all parent folders in the hierarchy
+- **Date tracking** — `date` on first creation, `update` on every change
+- **Folder index** — automatically creates `FolderName.md` with a list of subfolders and notes
+- **i18n** — interface adapts to Obsidian language (RU/EN)
+- **Batch processing** — parallel updates for large vaults (20 files at once)
+- **Hidden folders** — skips `.git`, `.obsidian`, and other hidden paths
 
-## Формат frontmatter
+### Installation
 
-```yaml
+1. Open **Settings → Community plugins**
+2. Disable **Restricted mode**
+3. Browse → search **ORDupdater**
+4. Install & Enable
+
+Or manual: copy `main.js`, `manifest.json`, `styles.css` to `.obsidian/plugins/ord-updater/`.
+
+### Usage
+
+- **Auto:** properties update automatically on file create/modify/rename
+- **Ribbon icon** (refresh icon in sidebar) — update all files and folder indices
+- **Right-click** a folder → "ORDupdater: update folder"
+- **Right-click** a file → "ORDupdater: update file"
+- **Command palette** — "Update all files in vault"
+
+### Settings
+
+| Option | Description |
+|--------|-------------|
+| Auto-update | Update on file create/modify/rename |
+| Auto-tags | Tag from folder name |
+| Auto-links | Backlinks to parent folders |
+| Folder index | Create/update FolderName.md |
+| Index on save | Update folder index on Ctrl+S |
+
 ---
-date: 2026-07-24 15:30
-update: 2026-07-24 15:30
-ord_updater: true
-tags:
-  - НазваниеПапки
-links:
-  - "[[РодительскаяПапка]]"
-  - "[[КорневаяПапка]]"
+
+## Русский
+
+ORDupdater автоматически обновляет Properties (date, update, tags, links) на основе структуры папок.
+
+### Возможности
+
+- **Авто-теги** — тег из имени родительской папки
+- **Авто-ссылки** — обратные `[[links]]` на все папки в пути
+- **Даты** — `date` при создании, `update` при изменении
+- **Индексные файлы** — `Папка.md` со списком содержимого
+- **Пакетная обработка** — 20 файлов параллельно
+- **Скрытые папки** — `.git`, `.obsidian` игнорируются
+
+### Установка
+
+1. `Настройки → Сторонние плагины → Обзор → ORDupdater`
+2. Установить и включить
+
+Или вручную: скопировать `main.js`, `manifest.json`, `styles.css` в `.obsidian/plugins/ord-updater/`.
+
+### Использование
+
+- **Автоматически** — при создании/изменении/переименовании
+- **Иконка в ленте** (боковая панель) — обновить всё хранилище
+- **Правый клик** на папке/файле — обновить
+- **Палитра команд** (Ctrl+P) — "Обновить все файлы"
+
 ---
-```
 
-## Установка
+## License
 
-1. Открыть Настройки → Сторонние плагины
-2. Выключить «Ограничительный режим»
-3. Нажать «Обзор» и найти `ORDupdater`
-4. Установить и включить
-
-## Ручная установка
-
-Скопировать `main.js`, `manifest.json`, `styles.css` в `.obsidian/plugins/ord-updater/`.
-
-## Совместимость
-
-- Obsidian ≥ 0.15.0
-- Desktop и Mobile
-
-## Разработка
-
-```bash
-git clone https://github.com/Ordnungen/ord-updater
-cd ord-updater
-npm i
-npm run dev
-```
+MIT

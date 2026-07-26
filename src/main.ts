@@ -187,17 +187,22 @@ export default class OrdUpdater extends Plugin {
             if (!(file instanceof TFolder)) return;
             const oldFolderName = oldPath.split('/').pop();
             if (!oldFolderName) return;
+            // Rename old index file to new name instead of deleting+creating
             const oldIndexPath = `${oldPath}/${oldFolderName}.md`;
             const oldIndex = this.app.vault.getAbstractFileByPath(oldIndexPath);
+            const newIndexPath = `${file.path}/${file.name}.md`;
             if (oldIndex instanceof TFile) {
-                await this.app.fileManager.trashFile(oldIndex);
+                try {
+                    await this.app.vault.rename(oldIndex, newIndexPath);
+                } catch {
+                    // If rename fails (e.g. file exists), delete old and create fresh
+                    await this.app.fileManager.trashFile(oldIndex);
+                    await this.updateFolderIndex(file);
+                }
+            } else {
+                await this.updateFolderIndex(file);
             }
-            const strayPath = `${file.path}/${oldFolderName}.md`;
-            const stray = this.app.vault.getAbstractFileByPath(strayPath);
-            if (stray instanceof TFile && stray !== oldIndex) {
-                await this.app.fileManager.trashFile(stray);
-            }
-            await this.updateFolderIndex(file);
+            // Update parent folder index
             if (file.parent) {
                 await this.updateFolderIndex(file.parent);
             }
@@ -373,7 +378,7 @@ export default class OrdUpdater extends Plugin {
 
         if (this.pluginSettings.autoTags) {
             fm.set('tags', [tagName]);
-        } else if (fm.has('tags') && !this.isUserTag(fm, file.parent ? file.parent.path.split('/') : [])) {
+        } else {
             fm.delete('tags');
         }
 
@@ -575,7 +580,6 @@ export default class OrdUpdater extends Plugin {
                 }
             }
             content += '---\n\n';
-            content += `# ${folder.name}\n\n`;
             if (subfolders.length) {
                 content += `## ${isRu() ? 'Подпапки' : 'Subfolders'}\n\n${subfolders.join('\n')}\n\n`;
             }

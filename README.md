@@ -1,6 +1,6 @@
 ---
 date: 2026-07-26 08:46
-update: 2026-07-26 09:17
+update: 2026-07-26 09:28
 tags:
   - "ord-updater"
 links:
@@ -31,6 +31,8 @@ ORDupdater automatically manages frontmatter properties for your Obsidian notes.
 - **Batch processing** — parallel updates for large vaults (20 files at once)
 - **Hidden folders** — skips `.git`, `.obsidian`, and other hidden paths
 - **Space sanitization** — automatically renames files and folders with spaces (`My File.md` → `My_File.md`) on update
+- **Overwrite mode** — strips non-standard frontmatter fields (aliases, description, etc.) when enabled
+- **Index rename** — renames folder index files when the folder is renamed, instead of creating duplicates
 
 ### Installation
 
@@ -58,6 +60,8 @@ Or manual: copy `main.js`, `manifest.json`, `styles.css` to `.obsidian/plugins/o
 | Auto-links | Backlinks to parent folders |
 | Folder index | Create/update FolderName.md |
 | Index on save | Update folder index on Ctrl+S |
+| Overwrite mode | Strip non-standard frontmatter fields |
+| Sanitize spaces | Rename files/folders with spaces |
 
 ---
 
@@ -74,6 +78,8 @@ ORDupdater автоматически обновляет Properties (date, updat
 - **Пакетная обработка** — 20 файлов параллельно
 - **Скрытые папки** — `.git`, `.obsidian` игнорируются
 - **Очистка пробелов** — автоматически переименовывает файлы и папки с пробелами (`Мой файл.md` → `Мой_файл.md`)
+- **Режим перезаписи** — удаляет нестандартные поля frontmatter при включении
+- **Переименование индексов** — индексы переименовываются вместе с папкой
 
 ### Установка
 

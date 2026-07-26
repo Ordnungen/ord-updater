@@ -72,7 +72,7 @@ const LANG = {
 type LangKey = keyof typeof LANG.en;
 
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang = navigator.language?.startsWith('ru') ? 'ru' : 'en';
+    const lang: 'ru' | 'en' = navigator.language?.startsWith('ru') ? 'ru' : 'en';
     let text = (LANG[lang]?.[key] ?? LANG.en[key]);
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
@@ -290,7 +290,7 @@ export default class OrdUpdater extends Plugin {
     }
 
     async loadSettings(): Promise<void> {
-        this.pluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.pluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as ORDupdaterSettings;
     }
 
     async saveSettings(): Promise<void> {
@@ -478,7 +478,7 @@ export default class OrdUpdater extends Plugin {
                     map.set(currentKey, []);
                 } else if (val.startsWith('[') && val.endsWith(']')) {
                     try {
-                        const items = JSON.parse(val);
+                        const items = JSON.parse(val) as unknown;
                         if (Array.isArray(items)) {
                             map.set(currentKey, items);
                         } else {
@@ -657,7 +657,7 @@ export default class OrdUpdater extends Plugin {
 
     private getTimestamp(): string {
         const d = new Date();
-        const pad = (n: number) => n.toString().padStart(2, '0');
+        const pad = (n: number): string => n.toString().padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 }

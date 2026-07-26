@@ -1,7 +1,7 @@
 {
   "id": "ord-updater",
   "name": "ORDupdater",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.7.2",
   "description": "Automatically updates frontmatter properties based on folder structure. Renames files and folders with spaces.",
   "author": "Ordnung",

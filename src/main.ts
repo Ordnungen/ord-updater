@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -74,7 +74,7 @@ const LANG = {
 type LangKey = keyof typeof LANG.en;
 
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang = getLanguage?.()?.startsWith('ru') ? 'ru' : 'en';
+    const lang = navigator.language?.startsWith('ru') ? 'ru' : 'en';
     let text = (LANG[lang]?.[key] ?? LANG.en[key]);
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
@@ -85,7 +85,7 @@ function t(key: LangKey, replacements?: Record<string, string>): string {
 }
 
 function isRu(): boolean {
-    return getLanguage?.()?.startsWith('ru') ?? false;
+    return navigator.language?.startsWith('ru') ?? false;
 }
 
 // ---------------------------------------------------------------------------

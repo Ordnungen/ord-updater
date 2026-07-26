@@ -311,6 +311,8 @@ export default class OrdUpdater extends Plugin {
         // Skip hidden files and any file inside hidden folders
         const pathParts = file.path.split('/');
         if (pathParts.some(p => p.startsWith('.'))) return false;
+        // Skip README.md — used for GitHub/community page, don't add frontmatter
+        if (file.name.toLowerCase() === 'readme.md') return false;
         const expiry = this.processing.get(file.path);
         if (expiry && Date.now() < expiry) return false;
 

@@ -556,6 +556,8 @@ export default class OrdUpdater extends Plugin {
 
     private async updateFolderIndex(folder: TFolder): Promise<void> {
         if (folder.path.split('/').some(p => p.startsWith('.'))) return;
+        // Skip plugin directories (containing manifest.json)
+        if (folder.children.some(c => c instanceof TFile && c.name === 'manifest.json')) return;
         try {
             const vault = this.app.vault;
             const indexPath = `${folder.path}/${folder.name}.md`;

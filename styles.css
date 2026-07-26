@@ -1,13 +1,13 @@
-/* ORDupdater — body class toggles via plugin setting */
+/* ORDupdater — lock mode: body class toggled via plugin setting */
 
 body.ord-updater-lock .metadata-container .metadata-add-button {
-    display: none !important;
+    display: none;
 }
 
 body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-pill-remove-button {
-    display: none !important;
+    display: none;
 }
 
 body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-pill {
-    padding-right: 0.7em !important;
+    padding-right: 0.7em;
 }

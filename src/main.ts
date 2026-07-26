@@ -411,7 +411,13 @@ export default class OrdUpdater extends Plugin {
         fm.set('update', now);
 
         if (this.pluginSettings.autoTags) {
-            fm.set('tags', [tagName]);
+            const newTags = [tagName];
+            // Preserve "index" tag for orphaned index files
+            const existing = fm.get('tags');
+            if (existing && (Array.isArray(existing) ? existing : [existing]).some(t => t === 'index')) {
+                newTags.push('index');
+            }
+            fm.set('tags', newTags);
         } else {
             fm.delete('tags');
         }
@@ -631,6 +637,18 @@ export default class OrdUpdater extends Plugin {
             } else if (!existing) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.create(indexPath, content);
+            }
+
+            // Clean up orphaned index files (have "index" tag, not the current index)
+            const indexName = `${folder.name}.md`;
+            for (const c of children) {
+                if (!(c instanceof TFile) || c.extension !== 'md' || c.name === indexName) continue;
+                try {
+                    const raw = await vault.read(c);
+                    if (raw.includes('- "index"') || raw.includes('- "index"\n')) {
+                        await this.app.fileManager.trashFile(c);
+                    }
+                } catch { /* skip unreadable */ }
             }
         } catch (e) {
             console.error("ORDupdater:", String(e));

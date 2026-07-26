@@ -114,15 +114,37 @@ export default class OrdUpdater extends Plugin {
         await this.loadSettings();
 
         this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
-            const file = this.app.workspace.getActiveFile();
-            if (file) {
-                await this.safeUpdate(file, true);
-                new Notice(t('noticeFileUpdated', { name: file.basename }));
-            } else {
-                new Notice(t('noticeNoFile'));
+            // First pass: rename all folders with spaces
+            const vault = this.app.vault;
+            const allFolders: TFolder[] = [];
+            const collect = (f: TFolder) => { allFolders.push(f); for (const c of f.children) if (c instanceof TFolder) collect(c); };
+            collect(vault.getRoot());
+            allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+            for (const folder of allFolders) {
+                if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
+                if (folder.name.includes(' ')) {
+                    const newName = folder.name.replace(/\s+/g, '_');
+                    try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch {}
+                }
             }
+            // Second pass: update all files
+            const files = vault.getMarkdownFiles();
+            const count = await this.batchUpdate(files, true);
+            if (this.settings.autoIndex) {
+                const root = vault.getRoot();
+                const allFolders2: TFolder[] = [];
+                const collect2 = (f: TFolder) => { allFolders2.push(f); for (const c of f.children) if (c instanceof TFolder) collect2(c); };
+                collect2(root);
+                allFolders2.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+                for (const folder of allFolders2) {
+                    await this.updateFolderIndex(folder);
+                }
+            }
+            this.contentCache.clear();
+            new Notice(t('noticeUpdated', { n: String(count) }));
         });
 
+        // Commands
         this.addCommand({
             id: 'update-current-file',
             name: t('cmdUpdateFile'),
@@ -193,6 +215,15 @@ export default class OrdUpdater extends Plugin {
                             .setTitle(t('menuUpdateFolder'))
                             .setIcon('refresh-cw')
                             .onClick(async () => {
+                                // Rename the folder itself if it has spaces
+                                if (file.name.includes(' ')) {
+                                    const newName = file.name.replace(/\s+/g, '_');
+                                    try {
+                                        await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
+                                    } catch (e) {
+                                        console.error('ORDupdater: rename failed', file.path, e);
+                                    }
+                                }
                                 const files = await this.getMarkdownFilesRecursive(file);
                                 const count = await this.batchUpdate(files, false);
                                 if (this.settings.autoIndex) {
@@ -242,11 +273,38 @@ export default class OrdUpdater extends Plugin {
 
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
         if (!(file instanceof TFile) || file.extension !== 'md') return false;
-        if (file.path.includes('/.git/') || file.path.startsWith('.git/')) return false;
-        if (file.parent && file.basename === file.parent.name) return false;
+        // Skip hidden files and any file inside hidden folders
+        const pathParts = file.path.split('/');
+        if (pathParts.some(p => p.startsWith('.'))) return false;
         const expiry = this.processing.get(file.path);
         if (expiry && Date.now() < expiry) return false;
 
+        // Step 1: rename parent folder if it has spaces (before index check)
+        if (file.parent && file.parent.name.includes(' ')) {
+            const newName = file.parent.name.replace(/\s+/g, '_');
+            try {
+                await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
+                return true;
+            } catch (e) {
+                console.error('ORDupdater: rename folder failed', file.parent.path, e);
+            }
+        }
+
+        // Step 2: skip index files
+        if (file.parent && file.basename === file.parent.name) return false;
+
+        // Step 2: rename file itself if it has spaces
+        if (file.name.includes(' ')) {
+            const newName = file.name.replace(/\s+/g, '_');
+            try {
+                await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
+                return true;
+            } catch (e) {
+                console.error('ORDupdater: rename failed', file.path, e);
+            }
+        }
+
+        // Step 3: update frontmatter
         try {
             const changed = await this.updateFrontmatter(file);
             if (changed && isManual && this.settings.updateIndexOnSave && file.parent) {
@@ -389,14 +447,9 @@ export default class OrdUpdater extends Plugin {
                 if (val.length === 0) {
                     lines.push(`${key}:`);
                 } else {
-                    const allSimple = val.every(v => !/\s/.test(v) && v.length < 30);
-                    if (allSimple && val.length <= 5) {
-                        lines.push(`${key}: [${val.map(v => `"${v}"`).join(', ')}]`);
-                    } else {
-                        lines.push(`${key}:`);
-                        for (const item of val) {
-                            lines.push(`  - "${item}"`);
-                        }
+                    lines.push(`${key}:`);
+                    for (const item of val) {
+                        lines.push(`  - "${item}"`);
                     }
                 }
             } else {
@@ -438,7 +491,7 @@ export default class OrdUpdater extends Plugin {
     }
 
     private async updateFolderIndex(folder: TFolder): Promise<void> {
-        if (folder.path.includes('/.git/') || folder.path.startsWith('.git/')) return;
+        if (folder.path.split('/').some(p => p.startsWith('.'))) return;
         try {
             const vault = this.app.vault;
             const indexPath = `${folder.path}/${folder.name}.md`;

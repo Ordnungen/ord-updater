@@ -1,6 +1,6 @@
 ---
 date: 2026-07-26 03:53
-update: 2026-07-26 06:01
+update: 2026-07-26 08:12
 ord_updater: true
 tags: ["ord-updater"]
 links: ["[[1_Репозиторий]]", "[[Проекты]]", "[[ORDcod]]", "[[obsidian_plugins]]", "[[ord-updater]]"]

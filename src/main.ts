@@ -200,33 +200,26 @@ export default class OrdUpdater extends Plugin {
         }
 
         this.registerEvent(this.app.vault.on('rename', async (file: TAbstractFile, oldPath: string) => {
-            // Handle folder rename: orphaned index file needs renaming
             if (file instanceof TFolder) {
-                const oldFolderName = oldPath.split('/').pop();
-                if (oldFolderName && oldFolderName !== file.name) {
-                    const strayPath = `${file.path}/${oldFolderName}.md`;
-                    const stray = this.app.vault.getAbstractFileByPath(strayPath);
+                const oldName = oldPath.split('/').pop();
+                if (oldName && oldName !== file.name) {
+                    const stray = this.app.vault.getAbstractFileByPath(`${file.path}/${oldName}.md`);
                     if (stray instanceof TFile) {
-                        try {
-                            await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
-                        } catch {
-                            await this.app.fileManager.trashFile(stray);
-                            await this.updateFolderIndex(file);
-                        }
-                    } else {
-                        await this.updateFolderIndex(file);
+                        await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
                     }
-                    if (file.parent) await this.updateFolderIndex(file.parent);
                 }
+                if (file.parent) await this.updateFolderIndex(file.parent);
                 return;
             }
-            // Handle file rename: if orphaned index (basename != parent name), re-rename
             if (file instanceof TFile && file.extension === 'md' && file.parent) {
-                const oldName = oldPath.split('/').pop()?.replace('.md', '');
-                if (oldName && oldName === oldPath.split('/').slice(-2, -1)[0] && file.basename !== file.parent.name) {
-                    try {
-                        await this.app.vault.rename(file, `${file.parent.path}/${file.parent.name}.md`);
-                    } catch { /* already handled by folder handler */ }
+                const oldBase = oldPath.split('/').pop()?.replace('.md', '');
+                if (oldBase && oldBase !== file.basename && file.basename !== file.parent.name) {
+                    const target = `${file.parent.path}/${file.parent.name}.md`;
+                    if (this.app.vault.getAbstractFileByPath(target)) {
+                        await this.app.fileManager.trashFile(file);
+                    } else {
+                        await this.app.vault.rename(file, target);
+                    }
                 }
             }
         }));

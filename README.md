@@ -1,16 +1,3 @@
----
-date: 2026-07-26 21:32
-update: 2026-07-26 21:32
-tags:
-  - "ord-updater"
-links:
-  - "[[1_Репозиторий]]"
-  - "[[Проекты]]"
-  - "[[ORDcod]]"
-  - "[[obsidian_plugins]]"
-  - "[[ord-updater]]"
----
-
 # ORDupdater
 
 *Automatically manages frontmatter properties based on folder structure. Creates and maintains folder index files.*

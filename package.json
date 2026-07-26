@@ -1,6 +1,6 @@
 {
   "name": "ord-updater",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Automatically updates frontmatter properties based on folder structure",
   "main": "main.js",
   "scripts": {

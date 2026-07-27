@@ -551,6 +551,8 @@ export default class OrdUpdater extends Plugin {
     }
 
     private async updateFolderIndex(folder: TFolder): Promise<void> {
+        // Skip root folder and hidden/system folders
+        if (!folder.path) return;
         if (folder.path.split('/').some(p => p.startsWith('.'))) return;
         if (folder.path.includes('/node_modules/') || folder.path === 'node_modules') return;
         // Skip dev directories

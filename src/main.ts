@@ -215,15 +215,8 @@ export default class OrdUpdater extends Plugin {
                 return;
             }
             if (file instanceof TFile && file.extension === 'md' && file.parent) {
-                const oldBase = oldPath.split('/').pop()?.replace('.md', '');
-                if (oldBase && oldBase !== file.basename && file.basename !== file.parent.name) {
-                    const target = `${file.parent.path}/${file.parent.name}.md`;
-                    if (this.app.vault.getAbstractFileByPath(target)) {
-                        await this.app.fileManager.trashFile(file);
-                    } else {
-                        await this.app.vault.rename(file, target);
-                    }
-                }
+                // A file was renamed — just let safeUpdate handle frontmatter update
+                // Don't delete or force-rename to index
             }
         }));
 
@@ -324,9 +317,9 @@ export default class OrdUpdater extends Plugin {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
-                return true;
+                // Continue to process frontmatter — file reference is updated in-place
             } catch {
-                console.error("ORDupdater: rename folder failed", String(e));
+                console.error("ORDupdater: rename folder failed");
             }
         }
 
@@ -338,7 +331,7 @@ export default class OrdUpdater extends Plugin {
             const newName = file.name.replace(/\s+/g, '_');
             try {
                 await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
-                return true;
+                // file reference updated in-place by Obsidian — continue to frontmatter
             } catch {
                 console.error("ORDupdater: rename failed");
             }

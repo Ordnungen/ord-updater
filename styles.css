@@ -1,5 +1,6 @@
-/* ORDupdater — lock mode: body class toggled via plugin setting */
+/* ORDupdater styles */
 
+/* Lock mode: hide add-property button and tag remove buttons */
 body.ord-updater-lock .metadata-container .metadata-add-button {
     display: none;
 }
@@ -10,4 +11,30 @@ body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-p
 
 body.ord-updater-lock .markdown-preview-view .metadata-container .multi-select-pill {
     padding-right: 0.7em;
+}
+
+/* Settings: disabled toggle visual cue */
+.setting-item.is-disabled .setting-item-control .checkbox-container {
+    opacity: 0.4;
+}
+
+.setting-item.is-disabled .setting-item-info .setting-item-name {
+    opacity: 0.55;
+}
+
+.setting-item.is-disabled .setting-item-info .setting-item-description {
+    opacity: 0.45;
+}
+
+/* Settings: overwrite-mode notice */
+.ord-updater-notice {
+    border-left: 3px solid var(--color-orange);
+    background-color: var(--background-secondary);
+    padding: 0 0 0 8px !important;
+    margin: 4px 0;
+    border-radius: 4px;
+}
+
+.ord-updater-notice .setting-item-description {
+    font-size: var(--font-small);
 }

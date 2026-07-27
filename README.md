@@ -14,7 +14,7 @@
 | Folder index | Creates Folder.md files listing subfolders and notes |
 | I18n | Interface adapts to Obsidian language (EN / RU) |
 | Batch mode | Processes 20 files in parallel for large vaults |
-| Safe | Skips hidden folders (.obsidian, .git), Excalidraw, and index files |
+| Safe | Skips hidden folders (.obsidian, .git) and index files. Safely handles Excalidraw diagrams. |
 
 ### Optional
 

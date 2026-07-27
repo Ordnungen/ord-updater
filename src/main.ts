@@ -122,7 +122,8 @@ export default class OrdUpdater extends Plugin {
     private pluginSettings: ORDupdaterSettings = DEFAULT_SETTINGS;
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
-    private inBatch = false;
+    private batchCount = 0;
+    private get inBatch(): boolean { return this.batchCount > 0; }
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -181,7 +182,18 @@ export default class OrdUpdater extends Plugin {
             name: t('cmdUpdateVault'),
             callback: async () => {
                 const files = this.app.vault.getMarkdownFiles();
-                const count = await this.batchUpdate(files, false);
+                const count = await this.batchUpdate(files, true);
+                if (this.pluginSettings.autoIndex) {
+                    const root = this.app.vault.getRoot();
+                    const allFolders2: TFolder[] = [];
+                    const collect2 = (f: TFolder) => { allFolders2.push(f); for (const c of f.children) if (c instanceof TFolder) collect2(c); };
+                    collect2(root);
+                    allFolders2.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+                    for (const folder of allFolders2) {
+                        await this.updateFolderIndex(folder);
+                    }
+                }
+                this.contentCache.clear();
                 new Notice(t('noticeUpdated', { n: String(count) }));
             },
         });
@@ -247,7 +259,7 @@ export default class OrdUpdater extends Plugin {
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
-                                const count = await this.batchUpdate(files, false);
+                                const count = await this.batchUpdate(files, true);
                                 if (this.pluginSettings.autoIndex) {
                                     const allFolders = this.getAllSubfolders(file);
                                     allFolders.push(file);
@@ -279,6 +291,7 @@ export default class OrdUpdater extends Plugin {
 
     onunload(): void {
         this.processing.clear();
+        this.contentCache.clear();
         document.body.classList.remove('ord-updater-lock');
     }
 
@@ -306,11 +319,14 @@ export default class OrdUpdater extends Plugin {
         if (pathParts.some(p => p.startsWith('.'))) return false;
         // Skip files in dev/build directories
         if (pathParts.includes('node_modules')) return false;
-        if (pathParts.includes('src') && file.path.includes('.ts')) return false;
+        if (pathParts.includes('src')) return false;
         // Skip README.md — used for GitHub/community page, don't add frontmatter
         if (file.name.toLowerCase() === 'readme.md') return false;
-        const expiry = this.processing.get(file.path);
-        if (expiry && Date.now() < expiry) return false;
+        // Debounce: skip auto events within DEBOUNCE_MS, but NOT manual
+        if (!isManual) {
+            const expiry = this.processing.get(file.path);
+            if (expiry && Date.now() < expiry) return false;
+        }
 
         // Step 1: rename parent folder if it has spaces (only manual)
         if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
@@ -323,19 +339,31 @@ export default class OrdUpdater extends Plugin {
             }
         }
 
-        // Step 2: skip index files
-        if (file.parent && file.basename === file.parent.name) return false;
-
-        // Step 3: rename file itself if it has spaces (only manual)
+        // Step 2: rename file itself if it has spaces (before index check, so index files also get sanitized)
         if (isManual && this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
-            const newName = file.name.replace(/\s+/g, '_');
-            try {
-                await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
-                // file reference updated in-place by Obsidian — continue to frontmatter
-            } catch {
-                console.error("ORDupdater: rename failed");
+            const baseName = file.basename.replace(/\s+/g, '_');
+            const ext = file.extension;
+            let candidateName = `${baseName}.${ext}`;
+            let candidatePath = `${file.parent?.path || ''}/${candidateName}`;
+            let counter = 0;
+            // If target exists, find next available number
+            while (this.app.vault.getAbstractFileByPath(candidatePath)) {
+                counter++;
+                candidateName = `${baseName}_${counter}.${ext}`;
+                candidatePath = `${file.parent?.path || ''}/${candidateName}`;
+            }
+            if (candidatePath !== file.path) {
+                try {
+                    await this.app.vault.rename(file, candidatePath);
+                    // file reference updated in-place by Obsidian
+                } catch {
+                    console.error("ORDupdater: rename failed");
+                }
             }
         }
+
+        // Step 3: skip index files
+        if (file.parent && file.basename === file.parent.name) return false;
 
         // Step 4: update frontmatter
         try {
@@ -362,13 +390,13 @@ export default class OrdUpdater extends Plugin {
     }
 
     private async batchUpdate(files: TFile[], isManual: boolean): Promise<number> {
-        this.inBatch = true;
+        this.batchCount++;
         try {
             const results = new Array(files.length).fill(false);
             for (let i = 0; i < files.length; i += this.BATCH_SIZE) {
                 const batch = files.slice(i, i + this.BATCH_SIZE);
                 const batchResults = await Promise.all(
-                    batch.map(f => this.safeUpdate(f, false))
+                    batch.map(f => this.safeUpdate(f, isManual))
                 );
                 for (let j = 0; j < batchResults.length; j++) {
                     results[i + j] = batchResults[j];
@@ -376,15 +404,13 @@ export default class OrdUpdater extends Plugin {
             }
             return results.filter(Boolean).length;
         } finally {
-            this.inBatch = false;
+            this.batchCount--;
         }
     }
 
     private async updateFrontmatter(file: TFile): Promise<boolean> {
         const vault = this.app.vault;
         const raw = await vault.read(file);
-
-        if (raw.includes('⚠ Switch to EXCALIDRAW VIEW')) return false;
 
         const match = raw.match(/^---\s*([\s\S]*?)\s*---/);
         const existingFM = match ? match[1].trim() : '';
@@ -403,13 +429,13 @@ export default class OrdUpdater extends Plugin {
             }
         }
 
-        const tagName = file.parent ? file.parent.name : file.basename;
+        const tagName = (file.parent && file.parent.name) ? file.parent.name : file.basename;
 
         const folderParts = file.parent ? file.parent.path.split('/').filter(Boolean) : [];
         let folderLinks: string[];
         if (folderParts.length > 0) {
             folderLinks = [...new Set(folderParts.map(p => `[[${p}]]`))];
-        } else if (file.parent) {
+        } else if (file.parent && file.parent.name) {
             folderLinks = [`[[${file.parent.name}]]`];
         } else {
             folderLinks = [];
@@ -517,14 +543,6 @@ export default class OrdUpdater extends Plugin {
             }
         }
         return lines.join('\n') + '\n';
-    }
-
-    private isUserTag(fm: Map<string, string | string[]>, pathParts: string[]): boolean {
-        const tags = fm.get('tags');
-        if (!tags) return false;
-        const tagValues = Array.isArray(tags) ? tags : [tags];
-        const folderNames = new Set(pathParts.filter(p => !/^\d+_/.test(p)));
-        return tagValues.every(t => folderNames.has(t));
     }
 
     private async getMarkdownFilesRecursive(folder: TFolder): Promise<TFile[]> {
@@ -690,7 +708,6 @@ class ORDupdaterSettingTab extends PluginSettingTab {
             { id: 'updateIndexOnSave', name: t('settingIndexOnSave'), desc: t('settingIndexOnSaveDesc'), type: 'toggle' },
             { id: 'overwriteMode', name: t('settingOverwrite'), desc: t('settingOverwriteDesc'), type: 'toggle' },
             { id: 'sanitizeSpaces', name: t('settingSanitize'), desc: t('settingSanitizeDesc'), type: 'toggle' },
-            { id: 'lockProperties', name: t('settingLock'), desc: t('settingLockDesc'), type: 'toggle' },
         ];
     }
 
@@ -704,6 +721,9 @@ class ORDupdaterSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName(t('settingsGeneral'))
+            .setDesc(isRu()
+                ? 'Базовые настройки: какие свойства и когда обновлять.'
+                : 'Basic settings: which properties to update and when.')
             .setHeading();
 
         new Setting(containerEl)
@@ -776,8 +796,22 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+        // Show notice when overwrite mode forces settings
+        if (this.plugin.getSettings().overwriteMode) {
+            const overwriteNotice = new Setting(containerEl)
+                .setName('')
+                .setDesc(isRu()
+                    ? '⚠ Включён режим перезаписи. Auto-tags, Auto-links и Lock properties принудительно включены и заблокированы.'
+                    : '⚠ Overwrite mode is on. Auto-tags, Auto-links, and Lock properties are forced on and locked.');
+            // Style it as a notice
+            overwriteNotice.settingEl.addClass('ord-updater-notice');
+        }
+
         new Setting(containerEl)
             .setName(t('settingDangerous'))
+            .setDesc(isRu()
+                ? 'Эти настройки изменяют файлы в хранилище. Включайте только если понимаете последствия.'
+                : 'These settings modify files in your vault. Enable only if you understand the consequences.')
             .setHeading();
 
         new Setting(containerEl)

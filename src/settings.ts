@@ -1,6 +1,6 @@
 /*
- * Настройки плагина: значения по умолчанию, проверка прочитанного и
- * небольшие помощники для свойств заметок.
+ * Настройки плагина: типы, значения по умолчанию и проверка прочитанного.
+ * Работа со свойствами заметок — в `properties.ts`.
  */
 
 // ---------------------------------------------------------------------------
@@ -56,42 +56,4 @@ export function sanitizeSettings(data: unknown): ORDupdaterSettings {
         lockProperties: flag(raw['lockProperties'], DEFAULT_SETTINGS.lockProperties),
         skipNames: typeof raw['skipNames'] === 'string' ? raw['skipNames'] : DEFAULT_SETTINGS.skipNames,
     };
-}
-
-/** Имена из настройки: пустые куски отбрасываем, сравнение — без регистра. */
-export function parseSkipNames(value: string): string[] {
-    return value
-        .split(',')
-        .map(name => name.trim().toLowerCase())
-        .filter(name => name !== '');
-}
-
-/** A property value as a list of strings, whatever shape it has in the file. */
-export function toStringList(value: unknown): string[] {
-    if (Array.isArray(value)) return value.map(item => String(item));
-    if (typeof value === 'string') {
-        return value.split(',').map(item => item.trim()).filter(item => item !== '');
-    }
-    return [];
-}
-
-/** Adds the values that are not there yet, keeping the existing ones in place. */
-export function mergeList(value: unknown, additions: string[]): string[] {
-    const result = toStringList(value);
-    for (const item of additions) {
-        if (!result.includes(item)) result.push(item);
-    }
-    return result;
-}
-
-/** Compares property values by content, not by reference. */
-export function sameValue(left: unknown, right: unknown): boolean {
-    return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-}
-
-/** A property value as text — only simple values have one. */
-export function asText(value: unknown): string {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    return '';
 }

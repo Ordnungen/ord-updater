@@ -11,6 +11,10 @@
 import fs from 'node:fs';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
+import { DEFAULT_SETTINGS } from '../src/settings';
+import {
+    mergeList, parseSkipNames, planProperties, planStaleTraces, sameValue, toStringList,
+} from '../src/properties';
 import {
     App, Modal, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
     setLanguage,
@@ -866,6 +870,68 @@ section('9г. Подтверждение массовой операции');
     await drain();
     assert('9г.6 окно можно закрыть, и это тоже отказ', Modal.open.length === 0);
     plugin.onunload();
+}
+
+section('9д. Правила свойств напрямую');
+{
+    // Модуль свойств чистый: его правила проверяются без Obsidian и без хранилища.
+    const settings = { ...DEFAULT_SETTINGS };
+    const traces = { folderTag: 'Папка', chain: ['[[Раздел]]', '[[Папка]]'] };
+    const ready = { date: '2026-01-01 10:00', update: '2026-01-01 10:00', tags: ['Папка'], links: ['[[Раздел]]', '[[Папка]]'] };
+
+    const nothing = planProperties({ settings, current: ready, traces, now: '2026-01-01 10:00', noteChanged: false });
+    assert('9д.1 когда менять нечего, плана нет', nothing === null, JSON.stringify(nothing));
+
+    const fresh = planProperties({ settings, current: {}, traces, now: '2026-01-02 10:00', noteChanged: false });
+    assert('9д.2 пустая заметка получает даты, тег папки и цепочку',
+        fresh !== null && fresh.changes['date'] === '2026-01-02 10:00' && fresh.changes['update'] === '2026-01-02 10:00'
+        && JSON.stringify(fresh.changes['tags']) === '["Папка"]'
+        && JSON.stringify(fresh.changes['links']) === '["[[Раздел]]","[[Папка]]"]',
+        JSON.stringify(fresh));
+
+    const merged = planProperties({
+        settings,
+        current: { date: '2026-01-01 10:00', update: '2026-01-01 10:00', tags: ['моё'], links: ['[[Своё]]'] },
+        traces,
+        now: '2026-01-02 10:00',
+        noteChanged: false,
+    });
+    assert('9д.3 чужое остаётся на месте, наше добавляется',
+        merged !== null && JSON.stringify(merged.changes['tags']) === '["моё","Папка"]'
+        && JSON.stringify(merged.changes['links']) === '["[[Своё]]","[[Раздел]]","[[Папка]]"]',
+        JSON.stringify(merged));
+
+    const overwrite = planProperties({
+        settings: { ...settings, overwriteMode: true },
+        current: { date: '2026-01-01 10:00', update: '2026-01-01 10:00', description: 'руками', cover: { image: 'a.png' }, tags: ['моё'], links: ['[[Своё]]'] },
+        traces,
+        now: '2026-01-02 10:00',
+        noteChanged: false,
+    });
+    assert('9д.4 режим перезаписи убирает всё чужое, оставляя наши четыре свойства',
+        overwrite !== null && JSON.stringify(overwrite.removals.sort()) === '["cover","description"]'
+        && JSON.stringify(overwrite.changes['links']) === JSON.stringify(traces.chain)
+        && JSON.stringify(overwrite.changes['tags']) === '["Папка"]',
+        JSON.stringify(overwrite));
+
+    assert('9д.5 помощники списков работают как обещано',
+        JSON.stringify(toStringList('проект, идея')) === '["проект","идея"]'
+        && JSON.stringify(mergeList(['проект'], ['проект', 'Папка'])) === '["проект","Папка"]'
+        && sameValue(['a'], ['a']) && !sameValue(['a'], ['b'])
+        && JSON.stringify(parseSkipNames(' SRC , readme.md ,')) === '["src","readme.md"]');
+
+    const sameFolder = planStaleTraces({ settings, oldPath: 'Папка/Заметка.md', traces, current: ready });
+    assert('9д.6 если папка не менялась, убирать нечего', sameFolder === null, JSON.stringify(sameFolder));
+
+    const moved = planStaleTraces({
+        settings,
+        oldPath: 'Старый/Заметка.md',
+        traces: { folderTag: 'Новый', chain: ['[[Новый]]'] },
+        current: { links: ['[[Старый]]', '[[Своё]]'], tags: ['Старый', 'моё'] },
+    });
+    assert('9д.7 после переноса уходят только следы прежней папки',
+        moved !== null && JSON.stringify(moved.links) === '["[[Своё]]"]' && JSON.stringify(moved.tags) === '["моё"]',
+        JSON.stringify(moved));
 }
 
 // --------------------------------------------------------------------------

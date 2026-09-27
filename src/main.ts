@@ -3,9 +3,10 @@ import { confirmAction } from './confirm';
 
 import { isRu, t, type LangKey } from './i18n';
 import {
-    DEFAULT_SETTINGS, asText, mergeList, parseSkipNames, sameValue, sanitizeSettings, toStringList,
+    DEFAULT_SETTINGS, sanitizeSettings,
     type ORDupdaterSettings,
 } from './settings';
+import { asText, parseSkipNames, planProperties, planStaleTraces } from './properties';
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -216,34 +217,21 @@ export default class OrdUpdater extends Plugin {
      * which is the only way to tell our traces apart from the user's own.
      */
     private async dropStaleTraces(file: TFile, oldPath: string): Promise<void> {
-        const oldFolders = oldPath.split('/').slice(0, -1);
-        if (oldFolders.length === 0) return;
-
-        const currentChain = this.folderChain(file);
-        const staleLinks = oldFolders.map(part => `[[${part}]]`).filter(link => !currentChain.includes(link));
-        const oldTag = oldFolders[oldFolders.length - 1] ?? '';
-        const staleTag = oldTag !== '' && oldTag !== this.folderTag(file);
-
-        const frontmatter: Record<string, unknown> = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-        const links = toStringList(frontmatter['links']);
-        const keptLinks = links.filter(link => !staleLinks.includes(link));
-        const tags = toStringList(frontmatter['tags']);
-        const keptTags = tags.filter(tag => tag !== oldTag);
-
-        const linksChanged = this.settings.autoLinks && keptLinks.length !== links.length;
-        const tagsChanged = this.settings.autoTags && staleTag && keptTags.length !== tags.length;
-        if (!linksChanged && !tagsChanged) return;
+        const current: Record<string, unknown> = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+        const kept = planStaleTraces({
+            settings: this.settings,
+            oldPath,
+            traces: { folderTag: this.folderTag(file), chain: this.folderChain(file) },
+            current,
+        });
+        if (!kept) return;
 
         this.processing.set(file.path, Date.now() + this.DEBOUNCE_MS);
         await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
-            if (linksChanged) {
-                if (keptLinks.length > 0) fm['links'] = keptLinks;
-                else delete fm['links'];
-            }
-            if (tagsChanged) {
-                if (keptTags.length > 0) fm['tags'] = keptTags;
-                else delete fm['tags'];
-            }
+            if (kept.links.length > 0) fm['links'] = kept.links;
+            else delete fm['links'];
+            if (kept.tags.length > 0) fm['tags'] = kept.tags;
+            else delete fm['tags'];
         });
     }
 
@@ -382,7 +370,13 @@ export default class OrdUpdater extends Plugin {
     private async updateFrontmatter(file: TFile, noteChanged: boolean): Promise<boolean> {
         const now = this.getTimestamp();
         const current: Record<string, unknown> = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-        const plan = this.plannedProperties(file, current, now, noteChanged);
+        const plan = planProperties({
+            settings: this.settings,
+            current,
+            traces: { folderTag: this.folderTag(file), chain: this.folderChain(file) },
+            now,
+            noteChanged,
+        });
         if (!plan) return false;
 
         this.processing.set(file.path, Date.now() + this.DEBOUNCE_MS);
@@ -391,60 +385,6 @@ export default class OrdUpdater extends Plugin {
             for (const key of plan.removals) delete frontmatter[key];
         });
         return true;
-    }
-
-    /**
-     * What the properties should say, as a patch on the current state.
-     * Returns null when there is nothing to do — that is what keeps a second run
-     * from touching the file at all.
-     */
-    private plannedProperties(
-        file: TFile,
-        current: Record<string, unknown>,
-        now: string,
-        noteChanged: boolean,
-    ): { changes: Record<string, unknown>; removals: string[] } | null {
-        const settings = this.settings;
-        const changes: Record<string, unknown> = {};
-        const removals: string[] = [];
-        const folderTag = this.folderTag(file);
-        const chain = this.folderChain(file);
-
-        if (settings.overwriteMode) {
-            // Overwrite mode: only the properties this plugin manages survive.
-            for (const key of Object.keys(current)) {
-                if (!['date', 'update', 'tags', 'links'].includes(key)) removals.push(key);
-            }
-        }
-
-        const date = current['date'];
-        if (asText(date).trim() === '') changes['date'] = now;
-
-        if (settings.autoTags) {
-            if (settings.overwriteMode) {
-                // The index tag marks a note this plugin created: keep it.
-                const index = toStringList(current['tags']).filter(tag => tag === 'index');
-                changes['tags'] = [...new Set([folderTag, ...index])];
-            } else {
-                // Merge: the folder tag is added, the user's own tags stay.
-                const tags = mergeList(current['tags'], [folderTag]);
-                if (!sameValue(tags, current['tags'])) changes['tags'] = tags;
-            }
-        } else if (settings.overwriteMode && current['tags'] !== undefined) {
-            removals.push('tags');
-        }
-
-        if (settings.autoLinks && chain.length > 0) {
-            const links = settings.overwriteMode ? chain : mergeList(current['links'], chain);
-            if (!sameValue(links, current['links'])) changes['links'] = links;
-        } else if (settings.overwriteMode && current['links'] !== undefined) {
-            removals.push('links');
-        }
-
-        const touched = Object.keys(changes).length > 0 || removals.length > 0;
-        if (!touched && !noteChanged) return null;
-        if (asText(current['update']) !== now) changes['update'] = now;
-        return { changes, removals };
     }
 
     /** Tag of the folder the note lives in; the note's own name at the root. */

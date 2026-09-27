@@ -2,3 +2,10 @@ node_modules/
 .DS_Store
 *.env
 dist/
+*.log
+
+# Runtime data (never part of the repository)
+data.json
+
+# Tooling output (checks and the vault report)
+.cache/

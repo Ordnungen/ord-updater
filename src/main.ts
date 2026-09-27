@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, moment, normalizePath } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -35,6 +35,9 @@ const LANG = {
         settingSanitize: 'Убирать пробелы в именах',
         settingSanitizeDesc: 'Переименовывает файлы и папки с пробелами в имени (Мой файл.md → Мой_файл.md).',
         settingRestartNotice: 'Изменения вступят после перезагрузки Obsidian',
+        settingsGeneralDesc: 'Базовые настройки: какие свойства и когда обновлять.',
+        settingsOverwriteNotice: 'Включён режим перезаписи: авто-теги, авто-ссылки и блокировка свойств включены принудительно.',
+        settingsDangerousDesc: 'Эти настройки изменяют файлы в хранилище. Включайте, только если понимаете последствия.',
     },
     en: {
         ribbonTooltip: 'ORDupdater: update properties',
@@ -66,14 +69,30 @@ const LANG = {
         settingSanitize: 'Remove spaces in names',
         settingSanitizeDesc: 'Renames files and folders with spaces (My File.md → My_File.md).',
         settingRestartNotice: 'Changes will apply after restarting Obsidian',
+        settingsGeneralDesc: 'Basic settings: which properties to update and when.',
+        settingsOverwriteNotice: 'Overwrite mode is on: auto-tags, auto-links and lock properties are forced on.',
+        settingsDangerousDesc: 'These settings modify files in your vault. Enable only if you understand the consequences.',
     },
 };
 
 type LangKey = keyof typeof LANG.en;
 
+/**
+ * Language of the interface.
+ *
+ * `getLanguage()` is the correct API, but it exists only since Obsidian 1.8.7
+ * while `minAppVersion` here is 1.7.2, so the browser value is used. It follows
+ * the system rather than Obsidian: a user running the app in Russian on an
+ * English system sees English until `minAppVersion` is raised (see
+ * `docs/PLAN.md`, заход 21).
+ */
+function currentLanguage(): string {
+    return navigator.language ?? 'en';
+}
+
 function t(key: LangKey, replacements?: Record<string, string>): string {
-    const lang: 'ru' | 'en' = navigator.language?.startsWith('ru') ? 'ru' : 'en';
-    let text = (LANG[lang]?.[key] ?? LANG.en[key]);
+    const lang: 'ru' | 'en' = currentLanguage().startsWith('ru') ? 'ru' : 'en';
+    let text = LANG[lang][key] ?? LANG.en[key];
     if (replacements) {
         for (const [k, v] of Object.entries(replacements)) {
             text = text.replace(`__${k}__`, v);
@@ -83,7 +102,7 @@ function t(key: LangKey, replacements?: Record<string, string>): string {
 }
 
 function isRu(): boolean {
-    return navigator.language?.startsWith('ru') ?? false;
+    return currentLanguage().startsWith('ru');
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +131,22 @@ const DEFAULT_SETTINGS: ORDupdaterSettings = {
     lockProperties: false,
 };
 
+/**
+ * Saved settings are user data: an old version, a hand edit or a damaged file
+ * can hold anything. Every value is checked and anything unexpected falls back
+ * to its default instead of reaching the code as-is.
+ */
+function sanitizeSettings(data: unknown): ORDupdaterSettings {
+    const raw: Record<string, unknown> = typeof data === 'object' && data !== null
+        ? data as Record<string, unknown>
+        : {};
+    const result = { ...DEFAULT_SETTINGS };
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof ORDupdaterSettings)[]) {
+        if (typeof raw[key] === 'boolean') result[key] = raw[key];
+    }
+    return result;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -133,15 +168,17 @@ export default class OrdUpdater extends Plugin {
             const vault = this.app.vault;
             // Rename folders with spaces (only if setting enabled)
             if (this.pluginSettings.sanitizeSpaces) {
-                const allFolders: TFolder[] = [];
-                const collect = (f: TFolder) => { allFolders.push(f); for (const c of f.children) if (c instanceof TFolder) collect(c); };
-                collect(vault.getRoot());
+                const allFolders: TFolder[] = [vault.getRoot(), ...this.collectFoldersDeep(vault.getRoot())];
                 allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
                 for (const folder of allFolders) {
                     if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
                     if (folder.name.includes(' ')) {
                         const newName = folder.name.replace(/\s+/g, '_');
-                        try { await vault.rename(folder, `${folder.parent?.path || ''}/${newName}`); } catch { /* folder may already be renamed */ }
+                        try {
+                            await this.app.fileManager.renameFile(folder, normalizePath(`${folder.parent?.path || ''}/${newName}`));
+                        } catch {
+                            console.error(`ORDupdater: could not rename folder "${folder.path}"`);
+                        }
                     }
                 }
             }
@@ -149,14 +186,7 @@ export default class OrdUpdater extends Plugin {
             const files = vault.getMarkdownFiles();
             const count = await this.batchUpdate(files, true);
             if (this.pluginSettings.autoIndex) {
-                const root = vault.getRoot();
-                const allFolders2: TFolder[] = [];
-                const collect2 = (f: TFolder) => { allFolders2.push(f); for (const c of f.children) if (c instanceof TFolder) collect2(c); };
-                collect2(root);
-                allFolders2.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
-                for (const folder of allFolders2) {
-                    await this.updateFolderIndex(folder);
-                }
+                await this.updateIndexesDeep(this.collectFoldersDeep(vault.getRoot()));
             }
             this.contentCache.clear();
             new Notice(t('noticeUpdated', { n: String(count) }));
@@ -184,14 +214,7 @@ export default class OrdUpdater extends Plugin {
                 const files = this.app.vault.getMarkdownFiles();
                 const count = await this.batchUpdate(files, true);
                 if (this.pluginSettings.autoIndex) {
-                    const root = this.app.vault.getRoot();
-                    const allFolders2: TFolder[] = [];
-                    const collect2 = (f: TFolder) => { allFolders2.push(f); for (const c of f.children) if (c instanceof TFolder) collect2(c); };
-                    collect2(root);
-                    allFolders2.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
-                    for (const folder of allFolders2) {
-                        await this.updateFolderIndex(folder);
-                    }
+                    await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
                 }
                 this.contentCache.clear();
                 new Notice(t('noticeUpdated', { n: String(count) }));
@@ -199,45 +222,18 @@ export default class OrdUpdater extends Plugin {
         });
 
         if (this.pluginSettings.autoUpdate) {
-            this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) =>
-                this.safeUpdate(file, false)));
-            this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile) =>
-                this.safeUpdate(file, false)));
-            this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) =>
-                this.safeUpdate(file, false)));
+            this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) => this.handleAutoUpdate(file)));
+            this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile) => this.handleAutoUpdate(file)));
+            this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) => this.handleAutoUpdate(file)));
         }
 
-        this.registerEvent(this.app.vault.on('rename', async (file: TAbstractFile, oldPath: string) => {
-            if (file instanceof TFolder) {
-                const oldName = oldPath.split('/').pop();
-                if (oldName && oldName !== file.name) {
-                    const stray = this.app.vault.getAbstractFileByPath(`${file.path}/${oldName}.md`);
-                    const target = this.app.vault.getAbstractFileByPath(`${file.path}/${file.name}.md`);
-                    if (stray instanceof TFile) {
-                        if (target instanceof TFile) {
-                            await this.app.fileManager.trashFile(stray);
-                        } else {
-                            await this.app.vault.rename(stray, `${file.path}/${file.name}.md`);
-                        }
-                    } else if (!(target instanceof TFile)) {
-                        await this.updateFolderIndex(file);
-                    }
-                }
-                if (file.parent) await this.updateFolderIndex(file.parent);
-                return;
-            }
-            if (file instanceof TFile && file.extension === 'md' && file.parent) {
-                // A file was renamed — just let safeUpdate handle frontmatter update
-                // Don't delete or force-rename to index
-            }
+        this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+            void this.handleVaultRename(file, oldPath);
         }));
 
-        this.registerDomEvent(document, 'keydown', async (e: KeyboardEvent) => {
+        this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                window.setTimeout(async () => {
-                    const file = this.app.workspace.getActiveFile();
-                    if (file) await this.safeUpdate(file, true);
-                }, 200);
+                window.setTimeout(() => { void this.updateActiveFile(); }, 200);
             }
         });
 
@@ -253,20 +249,15 @@ export default class OrdUpdater extends Plugin {
                                 if (file.name.includes(' ')) {
                                     const newName = file.name.replace(/\s+/g, '_');
                                     try {
-                                        await this.app.vault.rename(file, `${file.parent?.path || ''}/${newName}`);
+                                        await this.app.fileManager.renameFile(file, normalizePath(`${file.parent?.path || ''}/${newName}`));
                                     } catch {
-                                        console.error("ORDupdater: rename failed");
+                                        console.error(`ORDupdater: could not rename folder "${file.path}"`);
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
                                 const count = await this.batchUpdate(files, true);
                                 if (this.pluginSettings.autoIndex) {
-                                    const allFolders = this.getAllSubfolders(file);
-                                    allFolders.push(file);
-                                    allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
-                                    for (const folder of allFolders) {
-                                        await this.updateFolderIndex(folder);
-                                    }
+                                    await this.updateIndexesDeep([file, ...this.collectFoldersDeep(file)]);
                                 }
                                 this.contentCache.clear();
                                 new Notice(t('noticeFolderUpdated', { n: String(count), name: file.name }));
@@ -296,7 +287,7 @@ export default class OrdUpdater extends Plugin {
     }
 
     async loadSettings(): Promise<void> {
-        this.pluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as ORDupdaterSettings;
+        this.pluginSettings = sanitizeSettings(await this.loadData());
     }
 
     async saveSettings(): Promise<void> {
@@ -312,6 +303,54 @@ export default class OrdUpdater extends Plugin {
         document.body.classList.toggle('ord-updater-lock', this.pluginSettings.lockProperties);
     }
 
+    /** Update on Ctrl/Cmd+S: Obsidian saves right after the key event. */
+    private async updateActiveFile(): Promise<void> {
+        const file = this.app.workspace.getActiveFile();
+        if (file) await this.safeUpdate(file, true);
+    }
+
+    /** Debounced index refresh after an automatic edit. */
+    private async updateIndexAfterEdit(folder: TFolder, key: string): Promise<void> {
+        try {
+            await this.updateFolderIndex(folder);
+        } catch (error) {
+            console.error(`ORDupdater: could not refresh the index of "${folder.path}"`, error);
+        } finally {
+            this.processing.delete(key);
+        }
+    }
+
+    /** Vault events expect a void callback; the work itself is awaited inside. */
+    private handleAutoUpdate(file: TAbstractFile): void {
+        void this.safeUpdate(file, false);
+    }
+
+    /** A renamed folder can leave its old index note behind. */
+    private async handleVaultRename(file: TAbstractFile, oldPath: string): Promise<void> {
+        if (!(file instanceof TFolder)) return;
+        const oldName = oldPath.split('/').pop();
+        if (oldName && oldName !== file.name) {
+            const stray = this.app.vault.getAbstractFileByPath(`${file.path}/${oldName}.md`);
+            const target = this.app.vault.getAbstractFileByPath(`${file.path}/${file.name}.md`);
+            if (stray instanceof TFile) {
+                if (target instanceof TFile) {
+                    // The old index is replaced by the new one, but only when it
+                    // really is an index note: anything else is the user's note.
+                    if (this.isIndexNote(stray)) {
+                        await this.app.fileManager.trashFile(stray);
+                    } else {
+                        console.warn(`ORDupdater: left "${stray.path}" in place — it is not a folder index`);
+                    }
+                } else {
+                    await this.app.fileManager.renameFile(stray, normalizePath(`${file.path}/${file.name}.md`));
+                }
+            } else if (!(target instanceof TFile)) {
+                await this.updateFolderIndex(file);
+            }
+        }
+        if (file.parent) await this.updateFolderIndex(file.parent);
+    }
+
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
         if (!(file instanceof TFile) || file.extension !== 'md') return false;
         // Skip hidden files and any file inside hidden folders
@@ -325,17 +364,20 @@ export default class OrdUpdater extends Plugin {
         // Debounce: skip auto events within DEBOUNCE_MS, but NOT manual
         if (!isManual) {
             const expiry = this.processing.get(file.path);
-            if (expiry && Date.now() < expiry) return false;
+            if (expiry) {
+                if (Date.now() < expiry) return false;
+                this.processing.delete(file.path);
+            }
         }
 
         // Step 1: rename parent folder if it has spaces (only manual)
         if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
-                await this.app.vault.rename(file.parent, `${file.parent.parent?.path || ''}/${newName}`);
+                await this.app.fileManager.renameFile(file.parent, normalizePath(`${file.parent.parent?.path || ''}/${newName}`));
                 // Continue to process frontmatter — file reference is updated in-place
             } catch {
-                console.error("ORDupdater: rename folder failed");
+                console.error(`ORDupdater: could not rename folder "${file.parent.path}"`);
             }
         }
 
@@ -344,20 +386,20 @@ export default class OrdUpdater extends Plugin {
             const baseName = file.basename.replace(/\s+/g, '_');
             const ext = file.extension;
             let candidateName = `${baseName}.${ext}`;
-            let candidatePath = `${file.parent?.path || ''}/${candidateName}`;
+            let candidatePath = normalizePath(`${file.parent?.path || ''}/${candidateName}`);
             let counter = 0;
             // If target exists, find next available number
             while (this.app.vault.getAbstractFileByPath(candidatePath)) {
                 counter++;
                 candidateName = `${baseName}_${counter}.${ext}`;
-                candidatePath = `${file.parent?.path || ''}/${candidateName}`;
+                candidatePath = normalizePath(`${file.parent?.path || ''}/${candidateName}`);
             }
             if (candidatePath !== file.path) {
                 try {
-                    await this.app.vault.rename(file, candidatePath);
+                    await this.app.fileManager.renameFile(file, candidatePath);
                     // file reference updated in-place by Obsidian
                 } catch {
-                    console.error("ORDupdater: rename failed");
+                    console.error(`ORDupdater: could not rename "${file.path}" to "${candidatePath}"`);
                 }
             }
         }
@@ -373,18 +415,16 @@ export default class OrdUpdater extends Plugin {
             }
             if (changed && !isManual && this.pluginSettings.autoIndex && file.parent) {
                 // Auto-events: debounce index update to avoid excessive writes
-                const key = `idx:${file.parent.path}`;
+                const parent = file.parent;
+                const key = `idx:${parent.path}`;
                 if (!this.processing.has(key)) {
                     this.processing.set(key, Date.now() + 5000);
-                    window.setTimeout(async () => {
-                        try { await this.updateFolderIndex(file.parent!); } catch { /* debounced, safe to skip */ }
-                        this.processing.delete(key);
-                    }, 1000);
+                    window.setTimeout(() => { void this.updateIndexAfterEdit(parent, key); }, 1000);
                 }
             }
             return changed;
-        } catch {
-            console.error("ORDupdater: error");
+        } catch (error) {
+            console.error(`ORDupdater: could not update the properties of "${file.path}"`, error);
             return false;
         }
     }
@@ -557,15 +597,39 @@ export default class OrdUpdater extends Plugin {
         return files;
     }
 
-    private getAllSubfolders(folder: TFolder): TFolder[] {
+    /** Every folder below `folder`, in no particular order. */
+    private collectFoldersDeep(folder: TFolder): TFolder[] {
         const result: TFolder[] = [];
-        for (const entry of folder.children) {
-            if (entry instanceof TFolder) {
-                result.push(entry);
-                result.push(...this.getAllSubfolders(entry));
+        const walk = (current: TFolder): void => {
+            for (const entry of current.children) {
+                if (entry instanceof TFolder) {
+                    result.push(entry);
+                    walk(entry);
+                }
             }
-        }
+        };
+        walk(folder);
         return result;
+    }
+
+    /**
+     * Index notes of the deepest folders first, so a parent index lists folders
+     * that already have their own index written.
+     */
+    private async updateIndexesDeep(folders: TFolder[]): Promise<void> {
+        const ordered = [...folders].sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+        for (const folder of ordered) {
+            await this.updateFolderIndex(folder);
+        }
+    }
+
+    /** An index note is one this plugin created: it carries the `index` tag. */
+    private isIndexNote(file: TFile): boolean {
+        const frontmatter: Record<string, unknown> | undefined = this.app.metadataCache.getFileCache(file)?.frontmatter;
+        const tags = frontmatter?.['tags'];
+        if (Array.isArray(tags)) return (tags as unknown[]).some(tag => tag === 'index');
+        if (typeof tags === 'string') return tags === 'index';
+        return false;
     }
 
     private async updateFolderIndex(folder: TFolder): Promise<void> {
@@ -670,20 +734,18 @@ export default class OrdUpdater extends Plugin {
             const existing = vault.getAbstractFileByPath(indexPath);
             if (existing instanceof TFile) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
-                await vault.modify(existing, content);
+                await vault.process(existing, () => content);
             } else if (!existing) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
                 await vault.create(indexPath, content);
             }
-        } catch {
-            console.error("ORDupdater: error");
+        } catch (error) {
+            console.error(`ORDupdater: could not write the index of "${folder.path}"`, error);
         }
     }
 
     private getTimestamp(): string {
-        const d = new Date();
-        const pad = (n: number): string => n.toString().padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        return moment().format('YYYY-MM-DD HH:mm');
     }
 }
 
@@ -699,18 +761,6 @@ class ORDupdaterSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
-    getSettingDefinitions(): Record<string, unknown>[] {
-        return [
-            { id: 'autoUpdate', name: t('settingAutoUpdate'), desc: t('settingAutoUpdateDesc'), type: 'toggle' },
-            { id: 'autoTags', name: t('settingTags'), desc: t('settingTagsDesc'), type: 'toggle' },
-            { id: 'autoLinks', name: t('settingLinks'), desc: t('settingLinksDesc'), type: 'toggle' },
-            { id: 'autoIndex', name: t('settingIndex'), desc: t('settingIndexDesc'), type: 'toggle' },
-            { id: 'updateIndexOnSave', name: t('settingIndexOnSave'), desc: t('settingIndexOnSaveDesc'), type: 'toggle' },
-            { id: 'overwriteMode', name: t('settingOverwrite'), desc: t('settingOverwriteDesc'), type: 'toggle' },
-            { id: 'sanitizeSpaces', name: t('settingSanitize'), desc: t('settingSanitizeDesc'), type: 'toggle' },
-        ];
-    }
-
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
@@ -721,9 +771,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName(t('settingsGeneral'))
-            .setDesc(isRu()
-                ? 'Базовые настройки: какие свойства и когда обновлять.'
-                : 'Basic settings: which properties to update and when.')
+            .setDesc(t('settingsGeneralDesc'))
             .setHeading();
 
         new Setting(containerEl)
@@ -735,7 +783,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                     const s = this.plugin.getSettings();
                     s.autoUpdate = val;
                     await this.plugin.saveSettings();
-                    new Notice(isRu() ? 'Изменения вступят после перезагрузки Obsidian' : 'Changes will apply after restarting Obsidian');
+                    new Notice(t('settingRestartNotice'));
                 }));
 
         new Setting(containerEl)
@@ -800,18 +848,14 @@ class ORDupdaterSettingTab extends PluginSettingTab {
         if (this.plugin.getSettings().overwriteMode) {
             const overwriteNotice = new Setting(containerEl)
                 .setName('')
-                .setDesc(isRu()
-                    ? '⚠ Включён режим перезаписи. Auto-tags, Auto-links и Lock properties принудительно включены и заблокированы.'
-                    : '⚠ Overwrite mode is on. Auto-tags, Auto-links, and Lock properties are forced on and locked.');
+                .setDesc(t('settingsOverwriteNotice'));
             // Style it as a notice
             overwriteNotice.settingEl.addClass('ord-updater-notice');
         }
 
         new Setting(containerEl)
             .setName(t('settingDangerous'))
-            .setDesc(isRu()
-                ? 'Эти настройки изменяют файлы в хранилище. Включайте только если понимаете последствия.'
-                : 'These settings modify files in your vault. Enable only if you understand the consequences.')
+            .setDesc(t('settingsDangerousDesc'))
             .setHeading();
 
         new Setting(containerEl)

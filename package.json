@@ -3,23 +3,26 @@
   "version": "1.0.4",
   "description": "Automatically updates frontmatter properties based on folder structure",
   "main": "main.js",
+  "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "node esbuild.config.mjs production",
-    "version": "node version-bump.mjs && git add manifest.json versions.json",
-    "lint": "eslint src/"
+    "typecheck": "tsc --noEmit --skipLibCheck",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint",
+    "cases": "node esbuild.config.mjs tools && node .cache/tools/cases.mjs",
+    "analyze": "node esbuild.config.mjs tools && node .cache/tools/vault-report.mjs",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
   "keywords": ["obsidian", "plugin", "frontmatter", "properties", "updater"],
   "author": "Ordnung",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "esbuild": "^0.24.0",
-    "eslint": "^9.0.0",
-    "obsidian": "^1.7.2",
-    "tslib": "^2.8.0",
-    "typescript": "^5.6.0"
+    "esbuild": "^0.25.5",
+    "eslint": "^9.39.0",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.13.0",
+    "typescript": "^5.8.0"
   }
 }

@@ -212,6 +212,17 @@ export function resetClock(): void {
     timerId = 1;
 }
 
+let language = 'en';
+
+/** Language of the fake app: the plugin reads it through `getLanguage()`. */
+export function setLanguage(value: string): void {
+    language = value;
+}
+
+export function getLanguage(): string {
+    return language;
+}
+
 /**
  * Minimal `moment` on top of the fake clock: the plugin formats timestamps with
  * it, so the checks can move time forward and see what changes.

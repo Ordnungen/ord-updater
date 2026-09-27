@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, moment, normalizePath } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage, moment, normalizePath } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -78,16 +78,13 @@ const LANG = {
 type LangKey = keyof typeof LANG.en;
 
 /**
- * Language of the interface.
- *
- * `getLanguage()` is the correct API, but it exists only since Obsidian 1.8.7
- * while `minAppVersion` here is 1.7.2, so the browser value is used. It follows
- * the system rather than Obsidian: a user running the app in Russian on an
- * English system sees English until `minAppVersion` is raised (see
- * `docs/PLAN.md`, заход 21).
+ * Language of the interface, taken from Obsidian itself: a user may run the app
+ * in Russian on an English system, and the plugin must follow the app.
+ * `getLanguage()` exists since Obsidian 1.8.7; the plugin's `minAppVersion` is
+ * 1.13.0, so the API is always there.
  */
 function currentLanguage(): string {
-    return navigator.language ?? 'en';
+    return getLanguage();
 }
 
 function t(key: LangKey, replacements?: Record<string, string>): string {

@@ -13,6 +13,7 @@ import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
     App, FakeElement, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, resetClock,
+    setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
 import path from 'node:path';
@@ -42,10 +43,6 @@ const MANIFEST = {
 const globals = globalThis as unknown as Record<string, unknown>;
 installTimers(globals);
 globals['document'] = fakeDocument;
-
-function setLanguage(language: string): void {
-    Object.defineProperty(globalThis, 'navigator', { value: { language }, configurable: true });
-}
 
 resetClock();
 setLanguage('ru');

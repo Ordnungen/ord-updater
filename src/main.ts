@@ -1,4 +1,4 @@
-import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, getLanguage, moment, normalizePath } from 'obsidian';
+import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, moment, normalizePath } from 'obsidian';
 import { confirmAction } from './confirm';
 
 import { isRu, t, type LangKey } from './i18n';

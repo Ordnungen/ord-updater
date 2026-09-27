@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
-    App, FakeElement, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, resetClock,
+    App, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, resetClock,
     setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
@@ -76,7 +76,7 @@ const privateApi = (plugin: OrdUpdater) => plugin as unknown as {
     safeUpdate(file: unknown, isManual: boolean): Promise<boolean>;
     updateFolderIndex(folder: unknown): Promise<void>;
     processing: Map<string, number>;
-    pluginSettings: Record<string, boolean>;
+    settings: Record<string, boolean>;
 };
 
 /**
@@ -116,20 +116,48 @@ function fakeMenu(): { menu: unknown; items: { title: string; run: () => Promise
     return { menu, items };
 }
 
-function countToggles(element: FakeElement): number {
-    let total = 0;
-    const walk = (node: FakeElement): void => {
-        if (node.getAttribute('data-value') !== null) total++;
-        for (const child of node.children) walk(child);
-    };
-    walk(element);
-    return total;
+/** Определение одной настройки в декларативном табе. */
+interface SettingDef {
+    name?: string;
+    desc?: string;
+    control?: { type: string; key: string };
 }
 
-function settingsTab(plugin: OrdUpdater) {
-    const tab = stub(plugin).settingTabs[0];
-    if (!tab) throw new Error('таб настроек не создан');
-    return tab;
+/** Группа определений с заголовком. */
+interface SettingGroup {
+    heading?: string;
+    items?: SettingDef[];
+}
+
+/** Как их отдаёт настоящий Obsidian: вкладка описана, а не нарисована. */
+function rawDefinitions(plugin: OrdUpdater): (SettingDef | SettingGroup)[] {
+    return stub(plugin).settingTabs.flatMap(tab =>
+        (tab.getSettingDefinitions?.() ?? []) as (SettingDef | SettingGroup)[]);
+}
+
+/** Все настройки вкладки, разложенные из групп. */
+function settingDefinitions(plugin: OrdUpdater): SettingDef[] {
+    return rawDefinitions(plugin).flatMap(item => {
+        const group = item as SettingGroup;
+        return group.items ?? [item as SettingDef];
+    });
+}
+
+/** Все видимые тексты вкладки: заголовки групп, названия и описания. */
+function definitionTexts(plugin: OrdUpdater): string[] {
+    const texts: string[] = [];
+    for (const item of rawDefinitions(plugin)) {
+        const group = item as SettingGroup;
+        const single = item as SettingDef;
+        if (group.heading) texts.push(group.heading);
+        if (single.name) texts.push(single.name);
+        if (single.desc) texts.push(single.desc);
+        for (const child of group.items ?? []) {
+            if (child.name) texts.push(child.name);
+            if (child.desc) texts.push(child.desc);
+        }
+    }
+    return texts;
 }
 
 // --------------------------------------------------------------------------
@@ -179,11 +207,8 @@ section('2. Тексты');
 for (const [language, foreign] of [['ru', 'Auto-update'], ['en', 'Автоматическое обновление']] as const) {
     setLanguage(language);
     const { plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
-    const tab = settingsTab(plugin);
-    tab.display();
-    await drain();
-    const texts = tab.containerEl.texts();
-    assert(`2.${language === 'ru' ? '1' : '2'} таб настроек целиком на ${language === 'ru' ? 'русском' : 'английском'}`,
+    const texts = definitionTexts(plugin);
+    assert(`2.${language === 'ru' ? '1' : '2'} вкладка настроек целиком на ${language === 'ru' ? 'русском' : 'английском'}`,
         !texts.some(text => text.includes(foreign)),
         texts.find(text => text.includes(foreign)) ?? 'чужого текста нет');
     assert(`2.${language === 'ru' ? '3' : '4'} подписи настроек непустые`,
@@ -211,24 +236,33 @@ setLanguage('ru');
 // 3. Таб настроек
 // --------------------------------------------------------------------------
 
-section('3. Таб настроек');
+section('3. Декларативная вкладка настроек');
 {
     const { plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
-    const tab = settingsTab(plugin);
-    tab.display();
-    await drain();
-    assert('3.1 нарисованы все восемь переключателей', countToggles(tab.containerEl) === 8,
-        `переключателей: ${countToggles(tab.containerEl)}`);
-    assert('3.2 предупреждения о перезаписи нет, пока режим выключен',
-        !tab.containerEl.texts().some(text => text.includes('перезаписи')));
+    const definitions = settingDefinitions(plugin);
+    const keys = definitions.map(item => item.control?.key ?? '');
+    assert('3.1 объявлены все восемь настроек', definitions.length === 8, keys.join(', '));
+    assert('3.2 каждая настройка — переключатель, привязанный к своему полю',
+        definitions.every(item => item.control?.type === 'toggle')
+        && !keys.includes('')
+        && new Set(keys).size === keys.length,
+        keys.join(', '));
+    assert('3.3 поля настроек совпадают с набором плагина',
+        keys.sort().join(',') === Object.keys(privateApi(plugin).settings).sort().join(','),
+        keys.join(', '));
+    assert('3.4 в описании авто-обновления сказано про перезагрузку',
+        definitions.some(item => item.control?.key === 'autoUpdate'
+            && (item.desc ?? '').includes('перезагрузки')),
+        definitions.find(item => item.control?.key === 'autoUpdate')?.desc ?? '');
+    assert('3.5 опасные настройки собраны в группу с заголовком',
+        rawDefinitions(plugin).some(item => 'heading' in item
+            && (item as SettingGroup).heading?.includes('Опасные')
+            && ((item as SettingGroup).items ?? []).some(child => child.control?.key === 'overwriteMode')));
 
-    privateApi(plugin).pluginSettings.overwriteMode = true;
-    tab.display();
-    await drain();
-    assert('3.3 в режиме перезаписи появляется предупреждение',
-        tab.containerEl.texts().some(text => text.includes('перезаписи')));
-    assert('3.4 в режиме перезаписи всё равно восемь переключателей',
-        countToggles(tab.containerEl) === 8, `переключателей: ${countToggles(tab.containerEl)}`);
+    // Декларативный таб читает и пишет ровно тот объект, которым пользуется
+    // плагин: одно хранилище настроек, а не две копии.
+    assert('3.6 вкладка и плагин работают с одним объектом настроек',
+        plugin.settings === plugin.getSettings());
     plugin.onunload();
 }
 
@@ -279,8 +313,8 @@ section('4. Свойства заметки');
 {
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
     const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
-    privateApi(plugin).pluginSettings.autoTags = false;
-    privateApi(plugin).pluginSettings.autoLinks = false;
+    privateApi(plugin).settings.autoTags = false;
+    privateApi(plugin).settings.autoLinks = false;
     await privateApi(plugin).safeUpdate(file, true);
     const content = app.vault.getContent('Папка/Заметка.md');
     assert('4.9 выключенные авто-теги и авто-ссылки не пишутся',
@@ -332,7 +366,7 @@ section('5. Переименования');
         'Другая.md': 'смотри [[Мой файл]] и [[Мой файл|алиас]]\n',
         'Папка/Третья.md': 'ссылка [[Мой файл]]\n',
     });
-    privateApi(plugin).pluginSettings.sanitizeSpaces = true;
+    privateApi(plugin).settings.sanitizeSpaces = true;
     const file = app.vault.getAbstractFileByPath('Мой файл.md') as unknown as TFile;
     app.workspace.setActiveFile(file);
     await stub(plugin).commands.find(command => command.id === 'update-current-file')?.callback();
@@ -353,7 +387,7 @@ section('5. Переименования');
 {
     // Папка верхнего уровня: путь не должен начинаться с двойного слэша.
     const { app, plugin } = await startPlugin({ 'Папка с пробелом/Заметка.md': 'текст\n' });
-    privateApi(plugin).pluginSettings.sanitizeSpaces = true;
+    privateApi(plugin).settings.sanitizeSpaces = true;
     const file = app.vault.getAbstractFileByPath('Папка с пробелом/Заметка.md') as unknown as TFile;
     await privateApi(plugin).safeUpdate(file, true);
     const moved = app.vault.getAbstractFileByPath('Папка_с_пробелом/Заметка.md');
@@ -367,7 +401,7 @@ section('5. Переименования');
 {
     // Столкновение имён: у цели уже есть файл.
     const { app, plugin } = await startPlugin({ 'Мой файл.md': 'a\n', 'Мой_файл.md': 'b\n' });
-    privateApi(plugin).pluginSettings.sanitizeSpaces = true;
+    privateApi(plugin).settings.sanitizeSpaces = true;
     const file = app.vault.getAbstractFileByPath('Мой файл.md') as unknown as TFile;
     await privateApi(plugin).safeUpdate(file, true);
     assert('5.8 занятое имя не перезаписывается, добавляется номер',

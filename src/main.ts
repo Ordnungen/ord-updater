@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting, TFile, TFolder, Notice, TAbstractFile, getLanguage, moment, normalizePath } from 'obsidian';
+import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, getLanguage, moment, normalizePath } from 'obsidian';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -18,7 +18,7 @@ const LANG = {
         settingsTab: 'ORDupdater',
         settingsGeneral: 'Основные настройки',
         settingAutoUpdate: 'Автоматическое обновление',
-        settingAutoUpdateDesc: 'Обновлять свойства при создании, изменении и переименовании файлов.',
+        settingAutoUpdateDesc: 'Обновлять свойства при создании, изменении и переименовании файлов. Изменения вступают после перезагрузки Obsidian.',
         settingTags: 'Авто-теги',
         settingTagsDesc: 'Добавлять тег из имени папки в свойства.',
         settingLinks: 'Авто-ссылки',
@@ -31,7 +31,7 @@ const LANG = {
         settingLock: 'Блокировать свойства',
         settingLockDesc: 'Скрывает кнопку «Добавить свойство» и крестики удаления тегов в режиме чтения. Полезно если плагин управляет свойствами.',
         settingOverwrite: 'Перезаписывать все свойства',
-        settingOverwriteDesc: 'Удаляет нестандартные поля из frontmatter (aliases, description и т.д.). Включайте только если понимаете что делаете.',
+        settingOverwriteDesc: 'Оставляет только date, update, tags и links, удаляя остальные свойства. При включении авто-теги, авто-ссылки и блокировка свойств действуют принудительно.',
         settingSanitize: 'Убирать пробелы в именах',
         settingSanitizeDesc: 'Переименовывает файлы и папки с пробелами в имени (Мой файл.md → Мой_файл.md).',
         settingRestartNotice: 'Изменения вступят после перезагрузки Obsidian',
@@ -52,7 +52,7 @@ const LANG = {
         settingsTab: 'ORDupdater',
         settingsGeneral: 'General settings',
         settingAutoUpdate: 'Auto-update',
-        settingAutoUpdateDesc: 'Update properties on file create, modify and rename.',
+        settingAutoUpdateDesc: 'Update properties on file create, modify and rename. Changes apply after restarting Obsidian.',
         settingTags: 'Auto-tags',
         settingTagsDesc: 'Add a tag from the folder name to properties.',
         settingLinks: 'Auto-links',
@@ -65,7 +65,7 @@ const LANG = {
         settingLock: 'Lock properties',
         settingLockDesc: 'Hides the "Add property" button and tag remove buttons in read mode. Useful when the plugin manages properties.',
         settingOverwrite: 'Overwrite all frontmatter',
-        settingOverwriteDesc: 'Removes non-standard fields from frontmatter (aliases, description, etc.). Enable only if you understand the consequences.',
+        settingOverwriteDesc: 'Keeps only date, update, tags and links and removes the other properties. While it is on, auto-tags, auto-links and property locking are forced.',
         settingSanitize: 'Remove spaces in names',
         settingSanitizeDesc: 'Renames files and folders with spaces (My File.md → My_File.md).',
         settingRestartNotice: 'Changes will apply after restarting Obsidian',
@@ -181,7 +181,7 @@ function asText(value: unknown): string {
 export default class OrdUpdater extends Plugin {
     private processing: Map<string, number> = new Map();
     private readonly DEBOUNCE_MS = 3000;
-    private pluginSettings: ORDupdaterSettings = DEFAULT_SETTINGS;
+    settings: ORDupdaterSettings = DEFAULT_SETTINGS;
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
     private batchCount = 0;
@@ -194,7 +194,7 @@ export default class OrdUpdater extends Plugin {
         this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
             const vault = this.app.vault;
             // Rename folders with spaces (only if setting enabled)
-            if (this.pluginSettings.sanitizeSpaces) {
+            if (this.settings.sanitizeSpaces) {
                 const allFolders: TFolder[] = [vault.getRoot(), ...this.collectFoldersDeep(vault.getRoot())];
                 allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
                 for (const folder of allFolders) {
@@ -212,7 +212,7 @@ export default class OrdUpdater extends Plugin {
             // Second pass: update all files
             const files = vault.getMarkdownFiles();
             const count = await this.batchUpdate(files, true);
-            if (this.pluginSettings.autoIndex) {
+            if (this.settings.autoIndex) {
                 await this.updateIndexesDeep(this.collectFoldersDeep(vault.getRoot()));
             }
             this.contentCache.clear();
@@ -240,7 +240,7 @@ export default class OrdUpdater extends Plugin {
             callback: async () => {
                 const files = this.app.vault.getMarkdownFiles();
                 const count = await this.batchUpdate(files, true);
-                if (this.pluginSettings.autoIndex) {
+                if (this.settings.autoIndex) {
                     await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
                 }
                 this.contentCache.clear();
@@ -248,7 +248,7 @@ export default class OrdUpdater extends Plugin {
             },
         });
 
-        if (this.pluginSettings.autoUpdate) {
+        if (this.settings.autoUpdate) {
             this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) => this.handleAutoUpdate(file)));
             this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile) => this.handleAutoUpdate(file)));
             this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) => this.handleAutoUpdate(file)));
@@ -283,7 +283,7 @@ export default class OrdUpdater extends Plugin {
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
                                 const count = await this.batchUpdate(files, true);
-                                if (this.pluginSettings.autoIndex) {
+                                if (this.settings.autoIndex) {
                                     await this.updateIndexesDeep([file, ...this.collectFoldersDeep(file)]);
                                 }
                                 this.contentCache.clear();
@@ -314,20 +314,20 @@ export default class OrdUpdater extends Plugin {
     }
 
     async loadSettings(): Promise<void> {
-        this.pluginSettings = sanitizeSettings(await this.loadData());
+        this.settings = sanitizeSettings(await this.loadData());
     }
 
     async saveSettings(): Promise<void> {
-        await this.saveData(this.pluginSettings);
+        await this.saveData(this.settings);
         this.applyLockStyle();
     }
 
     getSettings(): ORDupdaterSettings {
-        return this.pluginSettings;
+        return this.settings;
     }
 
     private applyLockStyle(): void {
-        document.body.classList.toggle('ord-updater-lock', this.pluginSettings.lockProperties);
+        document.body.classList.toggle('ord-updater-lock', this.settings.lockProperties);
     }
 
     /** Update on Ctrl/Cmd+S: Obsidian saves right after the key event. */
@@ -398,7 +398,7 @@ export default class OrdUpdater extends Plugin {
         }
 
         // Step 1: rename parent folder if it has spaces (only manual)
-        if (isManual && this.pluginSettings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
+        if (isManual && this.settings.sanitizeSpaces && file.parent && file.parent.name.includes(' ')) {
             const newName = file.parent.name.replace(/\s+/g, '_');
             try {
                 await this.app.fileManager.renameFile(file.parent, normalizePath(`${file.parent.parent?.path || ''}/${newName}`));
@@ -409,7 +409,7 @@ export default class OrdUpdater extends Plugin {
         }
 
         // Step 2: rename file itself if it has spaces (before index check, so index files also get sanitized)
-        if (isManual && this.pluginSettings.sanitizeSpaces && file.name.includes(' ')) {
+        if (isManual && this.settings.sanitizeSpaces && file.name.includes(' ')) {
             const baseName = file.basename.replace(/\s+/g, '_');
             const ext = file.extension;
             let candidateName = `${baseName}.${ext}`;
@@ -437,10 +437,10 @@ export default class OrdUpdater extends Plugin {
         // Step 4: update frontmatter
         try {
             const changed = await this.updateFrontmatter(file, !isManual);
-            if (changed && isManual && this.pluginSettings.updateIndexOnSave && file.parent) {
+            if (changed && isManual && this.settings.updateIndexOnSave && file.parent) {
                 await this.updateFolderIndex(file.parent);
             }
-            if (changed && !isManual && this.pluginSettings.autoIndex && file.parent) {
+            if (changed && !isManual && this.settings.autoIndex && file.parent) {
                 // Auto-events: debounce index update to avoid excessive writes
                 const parent = file.parent;
                 const key = `idx:${parent.path}`;
@@ -509,7 +509,7 @@ export default class OrdUpdater extends Plugin {
         now: string,
         noteChanged: boolean,
     ): { changes: Record<string, unknown>; removals: string[] } | null {
-        const settings = this.pluginSettings;
+        const settings = this.settings;
         const changes: Record<string, unknown> = {};
         const removals: string[] = [];
         const folderTag = this.folderTag(file);
@@ -732,136 +732,43 @@ export default class OrdUpdater extends Plugin {
 // ---------------------------------------------------------------------------
 
 class ORDupdaterSettingTab extends PluginSettingTab {
-    private plugin: OrdUpdater;
+    /**
+     * Settings are declared, not drawn. Obsidian renders the controls, binds
+     * them to `plugin.settings` and shows them in its own settings search; the
+     * imperative `display()` would be skipped on 1.13+ anyway (docs/PLAN.md §7).
+     */
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        const toggle = (
+            key: keyof ORDupdaterSettings,
+            name: LangKey,
+            desc: LangKey,
+        ): SettingDefinitionControl => ({
+            name: t(name),
+            desc: t(desc),
+            control: { type: 'toggle', key },
+        });
 
-    constructor(app: App, plugin: OrdUpdater) {
-        super(app, plugin);
-        this.plugin = plugin;
-    }
-
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
-
-        new Setting(containerEl)
-            .setName(t('settingsTab'))
-            .setHeading();
-
-        new Setting(containerEl)
-            .setName(t('settingsGeneral'))
-            .setDesc(t('settingsGeneralDesc'))
-            .setHeading();
-
-        new Setting(containerEl)
-            .setName(t('settingAutoUpdate'))
-            .setDesc(t('settingAutoUpdateDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().autoUpdate)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.autoUpdate = val;
-                    await this.plugin.saveSettings();
-                    new Notice(t('settingRestartNotice'));
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingTags'))
-            .setDesc(t('settingTagsDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().autoTags)
-                .setDisabled(this.plugin.getSettings().overwriteMode)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.autoTags = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingLinks'))
-            .setDesc(t('settingLinksDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().autoLinks)
-                .setDisabled(this.plugin.getSettings().overwriteMode)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.autoLinks = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingIndex'))
-            .setDesc(t('settingIndexDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().autoIndex)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.autoIndex = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingIndexOnSave'))
-            .setDesc(t('settingIndexOnSaveDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().updateIndexOnSave)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.updateIndexOnSave = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingLock'))
-            .setDesc(t('settingLockDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().lockProperties)
-                .setDisabled(this.plugin.getSettings().overwriteMode)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.lockProperties = val;
-                    await this.plugin.saveSettings();
-                }));
-
-        // Show notice when overwrite mode forces settings
-        if (this.plugin.getSettings().overwriteMode) {
-            const overwriteNotice = new Setting(containerEl)
-                .setName('')
-                .setDesc(t('settingsOverwriteNotice'));
-            // Style it as a notice
-            overwriteNotice.settingEl.addClass('ord-updater-notice');
-        }
-
-        new Setting(containerEl)
-            .setName(t('settingDangerous'))
-            .setDesc(t('settingsDangerousDesc'))
-            .setHeading();
-
-        new Setting(containerEl)
-            .setName(t('settingOverwrite'))
-            .setDesc(t('settingOverwriteDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().overwriteMode)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.overwriteMode = val;
-                    if (val) {
-                        s.autoTags = true;
-                        s.autoLinks = true;
-                        s.lockProperties = true;
-                    }
-                    await this.plugin.saveSettings();
-                    this.display();
-                }));
-
-        new Setting(containerEl)
-            .setName(t('settingSanitize'))
-            .setDesc(t('settingSanitizeDesc'))
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.getSettings().sanitizeSpaces)
-                .onChange(async (val) => {
-                    const s = this.plugin.getSettings();
-                    s.sanitizeSpaces = val;
-                    await this.plugin.saveSettings();
-                }));
+        return [
+            {
+                type: 'group',
+                heading: t('settingsGeneral'),
+                items: [
+                    toggle('autoUpdate', 'settingAutoUpdate', 'settingAutoUpdateDesc'),
+                    toggle('autoTags', 'settingTags', 'settingTagsDesc'),
+                    toggle('autoLinks', 'settingLinks', 'settingLinksDesc'),
+                    toggle('autoIndex', 'settingIndex', 'settingIndexDesc'),
+                    toggle('updateIndexOnSave', 'settingIndexOnSave', 'settingIndexOnSaveDesc'),
+                    toggle('lockProperties', 'settingLock', 'settingLockDesc'),
+                ],
+            },
+            {
+                type: 'group',
+                heading: t('settingDangerous'),
+                items: [
+                    toggle('overwriteMode', 'settingOverwrite', 'settingOverwriteDesc'),
+                    toggle('sanitizeSpaces', 'settingSanitize', 'settingSanitizeDesc'),
+                ],
+            },
+        ];
     }
 }

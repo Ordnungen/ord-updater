@@ -753,7 +753,13 @@ export abstract class PluginSettingTab {
 
     constructor(public app: App, public plugin: Plugin) {}
 
-    abstract display(): void;
+    /** Declarative tab: Obsidian renders the controls from these definitions. */
+    getSettingDefinitions?(): unknown[];
+
+    /** Imperative tab: only for builds without the declarative API. */
+    display(): void {
+        // Nothing to do: the checks work with definitions, not with markup.
+    }
 }
 
 export interface Command {

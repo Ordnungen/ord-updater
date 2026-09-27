@@ -6,7 +6,7 @@ import {
     DEFAULT_SETTINGS, sanitizeSettings,
     type ORDupdaterSettings,
 } from './settings';
-import { asText, parseSkipNames, planProperties, planStaleTraces } from './properties';
+import { asText, parseSkipNames, planProperties, planStaleTraces, tagFor, type NoteTraces } from './properties';
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -221,7 +221,7 @@ export default class OrdUpdater extends Plugin {
         const kept = planStaleTraces({
             settings: this.settings,
             oldPath,
-            traces: { folderTag: this.folderTag(file), chain: this.folderChain(file) },
+            traces: this.tracesFor(file),
             current,
         });
         if (!kept) return;
@@ -373,7 +373,7 @@ export default class OrdUpdater extends Plugin {
         const plan = planProperties({
             settings: this.settings,
             current,
-            traces: { folderTag: this.folderTag(file), chain: this.folderChain(file) },
+            traces: this.tracesFor(file),
             now,
             noteChanged,
         });
@@ -387,9 +387,19 @@ export default class OrdUpdater extends Plugin {
         return true;
     }
 
-    /** Tag of the folder the note lives in; the note's own name at the root. */
-    private folderTag(file: TFile): string {
-        return file.parent && file.parent.name ? file.parent.name : file.basename;
+    /**
+     * Наши следы для заметки: тег папки в форме, которую Obsidian принимает, и
+     * цепочка ссылок на разделы. Имя папки как есть уходит в `legacyTag` — чтобы
+     * убрать прежний недопустимый след (например, из папки «11._УО»).
+     */
+    private tracesFor(file: TFile): NoteTraces {
+        const raw = file.parent && file.parent.name ? file.parent.name : file.basename;
+        const folderTag = tagFor(raw);
+        return {
+            folderTag,
+            legacyTag: raw === folderTag ? undefined : raw,
+            chain: this.folderChain(file),
+        };
     }
 
     /** Links to the folders the note lives in, from the top down. */
@@ -525,7 +535,9 @@ export default class OrdUpdater extends Plugin {
                 content += `date: ${date}\n`;
                 content += `update: ${update}\n`;
                 content += 'tags:\n';
-                content += `  - "${tagName}"\n`;
+                if (tagFor(tagName) !== '') {
+                    content += `  - "${tagFor(tagName)}"\n`;
+                }
                 content += '  - "index"\n';
                 if (folderLinks.length > 0) {
                     content += 'links:\n';

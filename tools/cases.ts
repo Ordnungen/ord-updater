@@ -13,7 +13,7 @@ import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import { DEFAULT_SETTINGS } from '../src/settings';
 import {
-    mergeList, parseSkipNames, planProperties, planStaleTraces, sameValue, toStringList,
+    mergeList, parseSkipNames, planProperties, planStaleTraces, sameValue, tagFor, toStringList,
 } from '../src/properties';
 import {
     App, Modal, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
@@ -757,8 +757,8 @@ section('9б. Разные хранилища');
     const deep = app.vault.getAbstractFileByPath('Работа 🔥/Проект A/Заметка 🇷🇺.md') as unknown as TFile;
     await privateApi(plugin).safeUpdate(deep, true);
     const frontmatter = readFrontmatter(app.vault.getContent('Работа 🔥/Проект A/Заметка 🇷🇺.md'));
-    assert('9б.1 эмодзи и пробелы в именах не мешают свойствам',
-        JSON.stringify(frontmatter['tags']) === JSON.stringify(['Проект A'])
+    assert('9б.1 эмодзи и пробелы в именах приводятся к допустимому тегу',
+        JSON.stringify(frontmatter['tags']) === JSON.stringify(['Проект_A'])
         && JSON.stringify(frontmatter['links']) === JSON.stringify(['[[Работа 🔥]]', '[[Проект A]]']),
         `tags ${JSON.stringify(frontmatter['tags'])}, links ${JSON.stringify(frontmatter['links'])}`);
 
@@ -914,8 +914,7 @@ section('9д. Правила свойств напрямую');
         && JSON.stringify(overwrite.changes['tags']) === '["Папка"]',
         JSON.stringify(overwrite));
 
-    assert('9д.5 помощники списков работают как обещано',
-        JSON.stringify(toStringList('проект, идея')) === '["проект","идея"]'
+    assert('9д.5 помощники списков работают как обещано',        JSON.stringify(toStringList('проект, идея')) === '["проект","идея"]'
         && JSON.stringify(mergeList(['проект'], ['проект', 'Папка'])) === '["проект","Папка"]'
         && sameValue(['a'], ['a']) && !sameValue(['a'], ['b'])
         && JSON.stringify(parseSkipNames(' SRC , readme.md ,')) === '["src","readme.md"]');
@@ -932,6 +931,35 @@ section('9д. Правила свойств напрямую');
     assert('9д.7 после переноса уходят только следы прежней папки',
         moved !== null && JSON.stringify(moved.links) === '["[[Своё]]"]' && JSON.stringify(moved.tags) === '["моё"]',
         JSON.stringify(moved));
+    assert('9д.8 тег приводится к виду, который принимает Obsidian',
+        tagFor('11._УО') === '11_УО'
+        && tagFor('Мой раздел') === 'Мой_раздел'
+        && tagFor('Работа 🔥') === 'Работа'
+        && tagFor('192.168.40.37') === ''
+        && tagFor('2024') === '',
+        `${tagFor('11._УО')} | ${tagFor('Мой раздел')} | ${tagFor('Работа 🔥')} | ${tagFor('192.168.40.37')} | ${tagFor('2024')}`);
+
+    const fixedTag = planProperties({
+        settings,
+        current: { date: '2026-01-01 10:00', update: '2026-01-01 10:00', tags: ['11._УО', 'index'], links: [] },
+        traces: { folderTag: '11_УО', legacyTag: '11._УО', chain: [] },
+        now: '2026-01-02 10:00',
+        noteChanged: false,
+    });
+    assert('9д.9 прежний недопустимый тег убран, вместо него допустимый',
+        fixedTag !== null && JSON.stringify(fixedTag.changes['tags']) === '["index","11_УО"]',
+        JSON.stringify(fixedTag));
+
+    const noTag = planProperties({
+        settings,
+        current: { date: '2026-01-01 10:00', update: '2026-01-01 10:00', tags: ['192.168.40.37', 'моё'], links: [] },
+        traces: { folderTag: '', legacyTag: '192.168.40.37', chain: [] },
+        now: '2026-01-02 10:00',
+        noteChanged: false,
+    });
+    assert('9д.10 имя без букв тегом не становится, чужой тег остаётся',
+        noTag !== null && JSON.stringify(noTag.changes['tags']) === '["моё"]',
+        JSON.stringify(noTag));
 }
 
 // --------------------------------------------------------------------------

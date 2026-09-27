@@ -17,7 +17,25 @@ export interface PropertyPlan {
 /** Наши следы в свойствах: тег папки и цепочка ссылок на разделы. */
 export interface NoteTraces {
     folderTag: string;
+    /** Имя папки как есть: недопустимый тегом прежний след плагин за собой убирает. */
+    legacyTag?: string;
     chain: string[];
+}
+
+/**
+ * Имя папки в виде тега, который Obsidian принимает.
+ *
+ * По документации Obsidian в теге можно только буквы, цифры, `_`, `-` и `/`,
+ * поэтому точки, пробелы, скобки и прочее становятся `_`. Имя без единой буквы
+ * тегом быть не может (Obsidian не принимает теги из одних цифр) — тогда пусто.
+ */
+export function tagFor(name: string): string {
+    const cleaned = name
+        .replace(/[^\p{L}\p{N}_/-]+/gu, '_')
+        .replace(/_+/g, '_')
+        .replace(/^[-_/]+|[-_/]+$/g, '');
+    if (cleaned === '' || !/\p{L}/u.test(cleaned)) return '';
+    return cleaned;
 }
 
 /** Имена из настройки: пустые куски отбрасываем, сравнение — без регистра. */
@@ -85,13 +103,17 @@ export function planProperties(options: {
     if (asText(current['date']).trim() === '') changes['date'] = now;
 
     if (settings.autoTags) {
+        const legacy = traces.legacyTag && traces.legacyTag !== traces.folderTag ? traces.legacyTag : '';
         if (settings.overwriteMode) {
             // The index tag marks a note this plugin created: keep it.
             const index = toStringList(current['tags']).filter(tag => tag === 'index');
-            changes['tags'] = [...new Set([traces.folderTag, ...index])];
+            const own = traces.folderTag === '' ? index : [traces.folderTag, ...index];
+            changes['tags'] = [...new Set(own)];
         } else {
-            // Merge: the folder tag is added, the user's own tags stay.
-            const tags = mergeList(current['tags'], [traces.folderTag]);
+            // Merge: the folder tag is added, the user's own tags stay. The only
+            // thing that goes is the invalid form this plugin wrote before.
+            const existing = toStringList(current['tags']).filter(tag => tag !== legacy);
+            const tags = traces.folderTag === '' ? existing : mergeList(existing, [traces.folderTag]);
             if (!sameValue(tags, current['tags'])) changes['tags'] = tags;
         }
     } else if (settings.overwriteMode && current['tags'] !== undefined) {

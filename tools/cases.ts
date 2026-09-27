@@ -45,7 +45,7 @@ const MANIFEST = {
 // Окружение: у плагина должны быть окно, таймеры, документ и язык.
 // --------------------------------------------------------------------------
 
-const globals = global as unknown as Record<string, unknown>;
+const globals = globalThis as unknown as Record<string, unknown>;
 installTimers(globals);
 globals['document'] = fakeDocument;
 

@@ -939,4 +939,11 @@ export abstract class Plugin {
     abstract onunload(): void;
 }
 
-export const Platform = { isDesktopApp: true, isMobile: false, isIosApp: false, isAndroidApp: false };
+export const Platform = {
+    isDesktop: true,
+    isDesktopApp: true,
+    isMobile: false,
+    isMobileApp: false,
+    isIosApp: false,
+    isAndroidApp: false,
+};

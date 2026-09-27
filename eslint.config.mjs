@@ -39,7 +39,6 @@ export default defineConfig([
                 Date: "readonly",
                 setTimeout: "readonly",
                 clearTimeout: "readonly",
-                global: "readonly",
             },
         },
         rules: {
@@ -56,7 +55,7 @@ export default defineConfig([
             "obsidianmd/rule-custom-message": "off",
             "obsidianmd/no-nodejs-modules": "off", // причина: инструмент работает в Node, а не в Obsidian
             "obsidianmd/hardcoded-config-path": "off", // причина: проверки подставляют фиктивные пути хранилища
-            "obsidianmd/no-global-this": "off", // причина: в Node окно доступно только как globalThis
+            "obsidianmd/no-global-this": "off", // причина: инструменты идут в Node, где окно — это globalThis
             "obsidianmd/no-tfile-tfolder-cast": "off", // причина: проверки строят поддельные файлы и папки
             "obsidianmd/no-plugin-as-component": "off", // причина: проверки создают плагин напрямую, без PluginManager
             // Причина: проверки явно называют тип поддельного файла (TFile/TFolder),

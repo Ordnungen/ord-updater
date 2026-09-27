@@ -18,7 +18,7 @@ import {
     App, TFolder, drain, installTimers, readFrontmatter, setLanguage, document as fakeDocument,
 } from './obsidian-stub';
 
-const globals = global as unknown as Record<string, unknown>;
+const globals = globalThis as unknown as Record<string, unknown>;
 installTimers(globals);
 globals['document'] = fakeDocument;
 

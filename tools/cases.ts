@@ -16,7 +16,7 @@ import {
     mergeList, parseSkipNames, planProperties, planStaleTraces, sameValue, tagFor, toStringList,
 } from '../src/properties';
 import {
-    App, Modal, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
+    App, Modal, Notice, Plugin as StubPlugin, advance, drain, installTimers, readFrontmatter, resetClock,
     setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
@@ -222,7 +222,7 @@ for (const [language, foreign] of [['ru', 'Auto-update'], ['en', 'Автомат
 setLanguage('ru');
 {
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     app.workspace.setActiveFile(file);
     Notice.all.length = 0;
     await stub(plugin).commands.find(command => command.id === 'update-current-file')?.callback();
@@ -277,7 +277,7 @@ section('3. Декларативная вкладка настроек');
 section('4. Свойства заметки');
 {
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '# Заметка\n\nтекст\n' });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
 
     const content = app.vault.getContent('Папка/Заметка.md');
@@ -316,7 +316,7 @@ section('4. Свойства заметки');
 }
 {
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     privateApi(plugin).settings.autoTags = false;
     privateApi(plugin).settings.autoLinks = false;
     await privateApi(plugin).safeUpdate(file, true);
@@ -331,7 +331,7 @@ section('4. Свойства заметки');
     const { app, plugin } = await startPlugin({
         'Папка/Заметка.md': '---\ntags:\n  - "проект"\nlinks:\n  - "[[Своё]]"\ndescription: "руками"\n---\n\nтекст\n',
     });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
     const content = app.vault.getContent('Папка/Заметка.md');
     assert('4.10 чужие теги сохранены, тег папки добавлен',
@@ -345,7 +345,7 @@ section('4. Свойства заметки');
     // Вложенные и блочные значения, а также типы переживают прогон.
     const nested = '---\ncover:\n  image: a.png\n  alt: подпись\npinned: true\nrating: 5\nnote: >\n  строка один\n  строка два\ntags: "проект, идея"\n---\n\nтекст\n';
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': nested });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
     const content = app.vault.getContent('Папка/Заметка.md');
     assert('4.13 вложенные свойства сохранены',
@@ -371,7 +371,7 @@ section('5. Переименования');
         'Папка/Третья.md': 'ссылка [[Мой файл]]\n',
     });
     privateApi(plugin).settings.sanitizeSpaces = true;
-    const file = app.vault.getAbstractFileByPath('Мой файл.md') as unknown as TFile;
+    const file = app.vault.fileAt('Мой файл.md');
     app.workspace.setActiveFile(file);
     await stub(plugin).commands.find(command => command.id === 'update-current-file')?.callback();
     await drain();
@@ -392,7 +392,7 @@ section('5. Переименования');
     // Папка верхнего уровня: путь не должен начинаться с двойного слэша.
     const { app, plugin } = await startPlugin({ 'Папка с пробелом/Заметка.md': 'текст\n' });
     privateApi(plugin).settings.sanitizeSpaces = true;
-    const file = app.vault.getAbstractFileByPath('Папка с пробелом/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка с пробелом/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
     const moved = app.vault.getAbstractFileByPath('Папка_с_пробелом/Заметка.md');
     assert('5.6 папка верхнего уровня переименована, путь корректен',
@@ -406,7 +406,7 @@ section('5. Переименования');
     // Столкновение имён: у цели уже есть файл.
     const { app, plugin } = await startPlugin({ 'Мой файл.md': 'a\n', 'Мой_файл.md': 'b\n' });
     privateApi(plugin).settings.sanitizeSpaces = true;
-    const file = app.vault.getAbstractFileByPath('Мой файл.md') as unknown as TFile;
+    const file = app.vault.fileAt('Мой файл.md');
     await privateApi(plugin).safeUpdate(file, true);
     assert('5.8 занятое имя не перезаписывается, добавляется номер',
         app.vault.getAbstractFileByPath('Мой_файл_1.md') !== null
@@ -426,7 +426,7 @@ section('6. Индексные заметки');
         'Раздел/Вложенная/Внутри.md': '',
         '.hidden/Скрытая.md': '',
     });
-    await privateApi(plugin).updateFolderIndex(app.vault.getAbstractFileByPath('Раздел') as unknown as TFolder);
+    await privateApi(plugin).updateFolderIndex(app.vault.folderAt('Раздел'));
     const index = app.vault.getContent('Раздел/Раздел.md');
     assert('6.1 индекс назван по папке и создан', index !== '', index.split('\n').slice(0, 8).join(' | '));
     assert('6.2 в индексе стоит тег index', index.includes('"index"'));
@@ -436,7 +436,7 @@ section('6. Индексные заметки');
     assert('6.5 у индексной заметки папки верхнего уровня нет чужих ссылок',
         !index.includes('links:'), index.split('\n').slice(0, 9).join(' | '));
 
-    await privateApi(plugin).updateFolderIndex(app.vault.getAbstractFileByPath('Раздел/Вложенная') as unknown as TFolder);
+    await privateApi(plugin).updateFolderIndex(app.vault.folderAt('Раздел/Вложенная'));
     const nestedIndex = app.vault.getContent('Раздел/Вложенная/Вложенная.md');
     assert('6.5 у индексной заметки вложенной папки собрана цепочка ссылок',
         nestedIndex.includes('links:') && nestedIndex.includes('[[Раздел]]'),
@@ -449,7 +449,7 @@ section('6. Индексные заметки');
     assert('6.6 индекс пустой папки создан и без списка заметок',
         emptyIndex !== '' && !emptyIndex.includes('[['), emptyIndex.replace(/\n/g, ' | '));
 
-    await privateApi(plugin).updateFolderIndex(app.vault.getAbstractFileByPath('.hidden') as unknown as TFolder);
+    await privateApi(plugin).updateFolderIndex(app.vault.folderAt('.hidden'));
     assert('6.7 скрытая папка индекс не получает',
         app.vault.getAbstractFileByPath('.hidden/.hidden.md') === null);
 
@@ -460,7 +460,7 @@ section('6. Индексные заметки');
 {
     // Папка плагина (есть manifest.json) индекс не получает.
     const { app, plugin } = await startPlugin({ 'плагин/manifest.json': '{}', 'плагин/main.js': 'x' });
-    await privateApi(plugin).updateFolderIndex(app.vault.getAbstractFileByPath('плагин') as unknown as TFolder);
+    await privateApi(plugin).updateFolderIndex(app.vault.folderAt('плагин'));
     assert('6.9 папка плагина индекс не получает',
         app.vault.getAbstractFileByPath('плагин/плагин.md') === null);
     plugin.onunload();
@@ -470,7 +470,7 @@ section('6. Индексные заметки');
     // Индексная заметка не переписывается, если ничего не изменилось, и её дата
     // создания сохраняется.
     const { app, plugin } = await startPlugin({ 'Раздел/Заметка.md': '' });
-    const folder = app.vault.getAbstractFileByPath('Раздел') as unknown as TFolder;
+    const folder = app.vault.folderAt('Раздел');
     await privateApi(plugin).updateFolderIndex(folder);
     const created = app.vault.getContent('Раздел/Раздел.md');
     const dateLine = /date: ([^\n]+)/.exec(created)?.[1] ?? '';
@@ -503,7 +503,7 @@ section('7. Переименование папки');
         'Старое/Новое.md': '---\ntags:\n  - "Старое"\n  - "index"\n---\n\nиндекс\n',
         'Старое/Заметка.md': 'текст\n',
     });
-    const folder = app.vault.getAbstractFileByPath('Старое') as unknown as TFolder;
+    const folder = app.vault.folderAt('Старое');
     await app.fileManager.renameFile(folder, 'Новое');
     await drain();
     assert('7.1 старый индекс заменён новым',
@@ -518,7 +518,7 @@ section('7. Переименование папки');
         'Старое/Старое.md': '---\ntags:\n  - "моё"\n---\n\nмоя заметка\n',
         'Старое/Новое.md': '---\ntags:\n  - "Старое"\n  - "index"\n---\n\nиндекс\n',
     });
-    const folder = app.vault.getAbstractFileByPath('Старое') as unknown as TFolder;
+    const folder = app.vault.folderAt('Старое');
     await app.fileManager.renameFile(folder, 'Новое');
     await drain();
     assert('7.2 пользовательская заметка не удаляется',
@@ -535,7 +535,7 @@ section('7. Переименование папки');
 section('8. События и дебаунс');
 {
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
-    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Папка/Заметка.md');
     await app.vault.trigger('modify', file);
     await advance(0);
     assert('8.1 автоматическое событие обновляет свойства',
@@ -574,7 +574,7 @@ section('8. События и дебаунс');
 {
     // Индекс родительской папки обновляется один раз на несколько правок.
     const { app, plugin } = await startPlugin({ 'Раздел/Заметка.md': '', 'Раздел/Вторая.md': '' });
-    const file = app.vault.getAbstractFileByPath('Раздел/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Раздел/Заметка.md');
     await app.vault.trigger('modify', file);
     await advance(1500);
     const writes = app.vault.writeCount('Раздел/Раздел.md');
@@ -673,7 +673,7 @@ section('9а. Настройки в работе');
         String(tab(plugin).getControlValue('autoTags')));
 
     await set(plugin, 'autoTags', false);
-    const note = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const note = app.vault.fileAt('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(note, true);
     const withoutTags = readFrontmatter(app.vault.getContent('Папка/Заметка.md'))['tags'];
     assert('9а.2 выключенные авто-теги не добавляют тег папки, чужой остаётся',
@@ -719,7 +719,7 @@ section('9а. Настройки в работе');
 
     await set(plugin, 'autoIndex', true);
     await set(plugin, 'updateIndexOnSave', false);
-    const inside = app.vault.getAbstractFileByPath('Новый раздел/Внутри.md') as unknown as TFile;
+    const inside = app.vault.fileAt('Новый раздел/Внутри.md');
     await privateApi(plugin).safeUpdate(inside, true);
     assert('9а.8 при выключенном «обновлять индекс при сохранении» заметка индекс не тянет',
         app.vault.getAbstractFileByPath('Новый раздел/Новый раздел.md') === null);
@@ -735,7 +735,7 @@ section('9а. Настройки в работе');
 {
     // Авто-обновление выключается при загрузке: события хранилища не подписаны.
     const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' }, { autoUpdate: false });
-    const note = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    const note = app.vault.fileAt('Папка/Заметка.md');
     await app.vault.trigger('modify', note);
     await advance(10);
     assert('9а.10 при выключенном авто-обновлении правки ничего не запускают',
@@ -754,7 +754,7 @@ section('9б. Разные хранилища');
         'Работа 🔥/Проект A/Уже с цепочкой.md': '---\nlinks:\n  - "[[Работа 🔥]]"\n  - "[[Своё]]"\ntags:\n  - моё\n---\n\nтекст\n',
     });
 
-    const deep = app.vault.getAbstractFileByPath('Работа 🔥/Проект A/Заметка 🇷🇺.md') as unknown as TFile;
+    const deep = app.vault.fileAt('Работа 🔥/Проект A/Заметка 🇷🇺.md');
     await privateApi(plugin).safeUpdate(deep, true);
     const frontmatter = readFrontmatter(app.vault.getContent('Работа 🔥/Проект A/Заметка 🇷🇺.md'));
     assert('9б.1 эмодзи и пробелы в именах приводятся к допустимому тегу',
@@ -762,7 +762,7 @@ section('9б. Разные хранилища');
         && JSON.stringify(frontmatter['links']) === JSON.stringify(['[[Работа 🔥]]', '[[Проект A]]']),
         `tags ${JSON.stringify(frontmatter['tags'])}, links ${JSON.stringify(frontmatter['links'])}`);
 
-    const existing = app.vault.getAbstractFileByPath('Работа 🔥/Проект A/Уже с цепочкой.md') as unknown as TFile;
+    const existing = app.vault.fileAt('Работа 🔥/Проект A/Уже с цепочкой.md');
     await privateApi(plugin).safeUpdate(existing, true);
     await advance(61_000);
     const before = app.vault.getContent('Работа 🔥/Проект A/Уже с цепочкой.md');
@@ -786,7 +786,7 @@ section('9б. Разные хранилища');
     // Имя заметки совпадает с именем папки: плагин считает это индексом и не
     // трогает — иначе пользовательская заметка получила бы наши свойства.
     const { app, plugin } = await startPlugin({ 'Раздел/Раздел.md': 'Это моя заметка, не индекс\n' });
-    const note = app.vault.getAbstractFileByPath('Раздел/Раздел.md') as unknown as TFile;
+    const note = app.vault.fileAt('Раздел/Раздел.md');
     await privateApi(plugin).safeUpdate(note, true);
     assert('9б.4 заметка с именем папки остаётся как есть',
         app.vault.getContent('Раздел/Раздел.md') === 'Это моя заметка, не индекс\n',
@@ -799,7 +799,7 @@ section('9в. Перенос заметки между папками');
     const { app, plugin } = await startPlugin({
         'Старый/Заметка.md': '---\nlinks:\n  - "[[Своё]]"\ntags:\n  - моё\n---\n\nтекст\n',
     });
-    const file = app.vault.getAbstractFileByPath('Старый/Заметка.md') as unknown as TFile;
+    const file = app.vault.fileAt('Старый/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
     const inOldFolder = app.vault.getContent('Старый/Заметка.md');
     assert('9в.1 в исходной папке цепочка собрана, чужая ссылка цела',

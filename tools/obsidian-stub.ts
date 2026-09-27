@@ -469,6 +469,23 @@ export class Vault {
         return walk(this.root);
     }
 
+    /**
+     * A file at this path. The checks know what they put in the vault, so this
+     * returns a typed file instead of a union — and says so loudly if it is not.
+     */
+    fileAt(path: string): TFile {
+        const found = this.getAbstractFileByPath(path);
+        if (!(found instanceof TFile)) throw new Error(`в хранилище нет файла ${path}`);
+        return found;
+    }
+
+    /** A folder at this path. */
+    folderAt(path: string): TFolder {
+        const found = this.getAbstractFileByPath(path);
+        if (!(found instanceof TFolder)) throw new Error(`в хранилище нет папки ${path}`);
+        return found;
+    }
+
     getMarkdownFiles(): TFile[] {
         const result: TFile[] = [];
         const walk = (folder: TFolder): void => {

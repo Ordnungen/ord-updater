@@ -8,6 +8,7 @@
  * Запуск: `npm run analyze -- "C:\путь\к\хранилищу" [--limit=N]`
  */
 
+import { say, sayErr } from './output';
 import fs from 'node:fs';
 import path from 'node:path';
 import { readFrontmatter } from './obsidian-stub';
@@ -23,10 +24,10 @@ const limitArg = args.find(argument => argument.startsWith('--limit='));
 const limit = limitArg ? Number(limitArg.split('=')[1]) : Infinity;
 
 if (!vaultPath) {
-    console.error('укажите путь к хранилищу: npm run analyze -- "<хранилище>"');
+    sayErr('укажите путь к хранилищу: npm run analyze -- "<хранилище>"');
     process.exitCode = 2;
 } else if (!fs.existsSync(vaultPath)) {
-    console.error(`хранилище не найдено: ${vaultPath}`);
+    sayErr(`хранилище не найдено: ${vaultPath}`);
     process.exitCode = 2;
 } else {
     report(vaultPath);
@@ -126,28 +127,28 @@ function report(root: string): void {
 
     const percent = (value: number): string => `${((value / seen.length) * 100).toFixed(1)}%`;
 
-    console.log(`хранилище:      ${root}`);
-    console.log(`заметок:        ${seen.length}${limit === Infinity ? '' : ` (ограничение ${limit})`}`);
-    console.log('');
-    console.log('что видит плагин:');
-    console.log(`  без свойств:            ${withoutFrontmatter} (${percent(withoutFrontmatter)})`);
-    console.log(`  с date:                 ${withDate} (${percent(withDate)})`);
-    console.log(`  с update:               ${withUpdate} (${percent(withUpdate)})`);
-    console.log(`  с links:                ${withLinks} (${percent(withLinks)})`);
-    console.log(`  индексные (тег index):  ${indexNotes} (${percent(indexNotes)})`);
-    console.log('');
-    console.log('что может сломать ручной разбор свойств:');
-    console.log(`  BOM в начале файла:     ${withBom} (${percent(withBom)})`);
-    console.log(`  вложенные значения:     ${nested} (${percent(nested)})`);
-    console.log(`  блочные значения >, |:  ${blockScalars}`);
-    console.log(`  числа и флажки:         ${typedScalars}`);
-    console.log(`  комментарии в свойствах: ${comments}`);
-    console.log(`  tags в одну строку:     ${inlineTags}`);
-    console.log('');
-    console.log('пропуски по зашитым именам (src, dist, build, node_modules, README.md):');
-    console.log(`  заметок:                ${skippedByHardcodedName} (${percent(skippedByHardcodedName)})`);
-    console.log(`  заметок, где имя = имя папки (плагин считает их индексами): ${nameEqualsFolder}`);
-    if (bomExamples.length) console.log(`\nпримеры с BOM: ${bomExamples.join(', ')}`);
-    if (nestedExamples.length) console.log(`примеры вложенных значений:\n  ${nestedExamples.join('\n  ')}`);
-    if (skippedExamples.length) console.log(`примеры пропусков:\n  ${skippedExamples.join('\n  ')}`);
+    say(`хранилище:      ${root}`);
+    say(`заметок:        ${seen.length}${limit === Infinity ? '' : ` (ограничение ${limit})`}`);
+    say('');
+    say('что видит плагин:');
+    say(`  без свойств:            ${withoutFrontmatter} (${percent(withoutFrontmatter)})`);
+    say(`  с date:                 ${withDate} (${percent(withDate)})`);
+    say(`  с update:               ${withUpdate} (${percent(withUpdate)})`);
+    say(`  с links:                ${withLinks} (${percent(withLinks)})`);
+    say(`  индексные (тег index):  ${indexNotes} (${percent(indexNotes)})`);
+    say('');
+    say('что может сломать ручной разбор свойств:');
+    say(`  BOM в начале файла:     ${withBom} (${percent(withBom)})`);
+    say(`  вложенные значения:     ${nested} (${percent(nested)})`);
+    say(`  блочные значения >, |:  ${blockScalars}`);
+    say(`  числа и флажки:         ${typedScalars}`);
+    say(`  комментарии в свойствах: ${comments}`);
+    say(`  tags в одну строку:     ${inlineTags}`);
+    say('');
+    say('пропуски по зашитым именам (src, dist, build, node_modules, README.md):');
+    say(`  заметок:                ${skippedByHardcodedName} (${percent(skippedByHardcodedName)})`);
+    say(`  заметок, где имя = имя папки (плагин считает их индексами): ${nameEqualsFolder}`);
+    if (bomExamples.length) say(`\nпримеры с BOM: ${bomExamples.join(', ')}`);
+    if (nestedExamples.length) say(`примеры вложенных значений:\n  ${nestedExamples.join('\n  ')}`);
+    if (skippedExamples.length) say(`примеры пропусков:\n  ${skippedExamples.join('\n  ')}`);
 }

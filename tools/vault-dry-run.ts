@@ -9,6 +9,7 @@
  * Запуск: npm run dry-run -- "C:\путь\к\хранилищу" [--lang=ru|en] [--limit=N] [--show=N]
  */
 
+import { say, sayErr } from './output';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { PluginManifest } from 'obsidian';
@@ -30,7 +31,7 @@ const show = Number(args.find(argument => argument.startsWith('--show='))?.split
 setLanguage(language);
 
 if (!vaultPath || !fs.existsSync(vaultPath)) {
-    console.error('укажите путь к хранилищу: npm run dry-run -- "<хранилище>"');
+    sayErr('укажите путь к хранилищу: npm run dry-run -- "<хранилище>"');
     process.exitCode = 2;
     throw new Error('нет хранилища');
 }
@@ -142,34 +143,34 @@ for (const item of changed) {
     byReason.set(item.reason, (byReason.get(item.reason) ?? 0) + 1);
 }
 
-console.log(`хранилище:         ${vaultPath}`);
-console.log(`заметок прочитано: ${before.size}${limit === Infinity ? '' : ` (ограничение ${limit})`}`);
-console.log(`язык интерфейса:   ${language}`);
-console.log('');
-console.log(`изменилось бы:     ${changed.length} заметок (${((changed.length / Math.max(before.size, 1)) * 100).toFixed(1)} %)`);
-console.log(`создано бы:        ${created.length} индексных заметок`);
-console.log(`пропущено правилами (src, dist, build, node_modules, README.md): ${skippedByRules.length}`);
-console.log('');
+say(`хранилище:         ${vaultPath}`);
+say(`заметок прочитано: ${before.size}${limit === Infinity ? '' : ` (ограничение ${limit})`}`);
+say(`язык интерфейса:   ${language}`);
+say('');
+say(`изменилось бы:     ${changed.length} заметок (${((changed.length / Math.max(before.size, 1)) * 100).toFixed(1)} %)`);
+say(`создано бы:        ${created.length} индексных заметок`);
+say(`пропущено правилами (src, dist, build, node_modules, README.md): ${skippedByRules.length}`);
+say('');
 if (byReason.size > 0) {
-    console.log('почему:');
+    say('почему:');
     for (const [reason, count] of [...byReason].sort((a, b) => b[1] - a[1])) {
-        console.log(`  ${String(count).padStart(5)}  ${reason}`);
+        say(`  ${String(count).padStart(5)}  ${reason}`);
     }
-    console.log('');
+    say('');
 }
 if (changed.length > 0) {
-    console.log(`примеры изменений (первые ${Math.min(show, changed.length)}):`);
+    say(`примеры изменений (первые ${Math.min(show, changed.length)}):`);
     for (const item of changed.slice(0, show)) {
-        console.log(`  ${item.path} — ${item.reason}`);
+        say(`  ${item.path} — ${item.reason}`);
     }
-    console.log('');
+    say('');
 }
 if (created.length > 0) {
-    console.log(`примеры новых индексов (первые ${Math.min(show, created.length)}):`);
-    for (const notePath of created.slice(0, show)) console.log(`  ${notePath}`);
-    console.log('');
+    say(`примеры новых индексов (первые ${Math.min(show, created.length)}):`);
+    for (const notePath of created.slice(0, show)) say(`  ${notePath}`);
+    say('');
 }
 if (skippedByRules.length > 0) {
-    console.log(`примеры пропусков (первые ${Math.min(show, skippedByRules.length)}):`);
-    for (const notePath of skippedByRules.slice(0, show)) console.log(`  ${notePath}`);
+    say(`примеры пропусков (первые ${Math.min(show, skippedByRules.length)}):`);
+    for (const notePath of skippedByRules.slice(0, show)) say(`  ${notePath}`);
 }

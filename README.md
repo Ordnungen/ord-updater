@@ -2,7 +2,7 @@
 
 *Keeps frontmatter properties and folder index notes in sync with your folder structure.*
 
-![ORDupdater cover](ord-updater-cover.png)
+![ORDupdater cover](ord-updater-cover.jpg)
 
 ## Features
 

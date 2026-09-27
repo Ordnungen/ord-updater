@@ -8,6 +8,7 @@
  * Запуск: `npm run cases`.
  */
 
+import { say } from './output';
 import fs from 'node:fs';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
@@ -61,15 +62,15 @@ const failures: string[] = [];
 function assert(name: string, condition: boolean, detail = ''): void {
     if (condition) {
         passed++;
-        console.log(`OK   ${name}${detail ? ` — ${detail}` : ''}`);
+        say(`OK   ${name}${detail ? ` — ${detail}` : ''}`);
     } else {
         failures.push(name);
-        console.log(`FAIL ${name}${detail ? ` — ${detail}` : ''}`);
+        say(`FAIL ${name}${detail ? ` — ${detail}` : ''}`);
     }
 }
 
 function section(title: string): void {
-    console.log(`\n=== ${title} ===`);
+    say(`\n=== ${title} ===`);
 }
 
 // --------------------------------------------------------------------------
@@ -991,8 +992,8 @@ section('9. Каркас');
 // Итог
 // --------------------------------------------------------------------------
 
-console.log(`\nпроверок: ${passed + failures.length}, провалено: ${failures.length}`);
+say(`\nпроверок: ${passed + failures.length}, провалено: ${failures.length}`);
 if (failures.length > 0) {
-    console.log(failures.map(name => `  провалено: ${name}`).join('\n'));
+    say(failures.map(name => `  провалено: ${name}`).join('\n'));
     process.exitCode = 1;
 }

@@ -873,6 +873,59 @@ section('9г. Подтверждение массовой операции');
     plugin.onunload();
 }
 
+section('9е. Ход массовой операции');
+{
+    // Заметок больше, чем порция обновления (20), поэтому ход видно по шагам:
+    // 20, 40, 45. На короткой папке уведомление о ходе не показывается вовсе.
+    const many: Record<string, string> = {};
+    for (let i = 1; i <= 45; i++) many[`Раздел/Заметка ${i}.md`] = '';
+    const { plugin } = await startPlugin(many);
+    Notice.all.length = 0;
+
+    const done = stub(plugin).ribbons[0].dispatch('click');
+    await drain();
+    await Modal.open[0]?.click('Обновить');
+    await done;
+    // Итог — отдельное уведомление, без слова «из»: его и ждём.
+    const finished = (): boolean => Notice.all.some(notice =>
+        notice.message.startsWith('ORDupdater: обновлено ') && !notice.message.includes(' из '));
+    for (let step = 0; step < 20 && !finished(); step++) {
+        await advance(1000);
+    }
+
+    const steps = Notice.all.filter(notice => notice.message.includes(' из 45 файлов'));
+    const counts = steps.flatMap(notice =>
+        notice.history.map(text => Number((/обновлено (\d+) из 45/.exec(text)?.[1]) ?? '0')));
+    assert('9е.1 ход операции показывается и начинается с нуля',
+        steps.length > 0 && counts[0] === 0,
+        steps.map(notice => notice.history.join(' -> ')).join(' | ') || 'хода не видно');
+    assert('9е.2 счётчик только растёт и доходит до числа заметок',
+        counts.length > 1
+        && counts.every((value, index) => index === 0 || value >= counts[index - 1])
+        && counts[counts.length - 1] === 45,
+        counts.join(', '));
+    assert('9е.3 уведомление о ходе не исчезает само и убирается в конце',
+        steps.every(notice => notice.timeout === 0 && notice.hidden),
+        steps.map(notice => `ожидание ${notice.timeout} мс, скрыто: ${notice.hidden}`).join('; '));
+    assert('9е.4 итог сообщается отдельно от хода',
+        finished(),
+        Notice.all.map(notice => notice.message).join(' | '));
+
+    // На короткой папке сообщения о ходе быть не должно: оно мигнуло бы зря.
+    const few = await startPlugin({ 'Малое/Один.md': '', 'Малое/Два.md': '' });
+    Notice.all.length = 0;
+    const short = stub(few.plugin).ribbons[0].dispatch('click');
+    await drain();
+    await Modal.open[0]?.click('Обновить');
+    await short;
+    await advance(1000);
+    assert('9е.5 на коротком списке уведомление о ходе не мелькает',
+        !Notice.all.some(notice => notice.message.includes(' из 2 файлов')),
+        Notice.all.map(notice => notice.message).join(' | '));
+    few.plugin.onunload();
+    plugin.onunload();
+}
+
 section('9д. Правила свойств напрямую');
 {
     // Модуль свойств чистый: его правила проверяются без Obsidian и без хранилища.

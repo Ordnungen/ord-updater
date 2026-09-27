@@ -680,10 +680,23 @@ export class App {
 export class Notice {
     static all: Notice[] = [];
     message: string;
+    hidden = false;
+    /** Every message in order: the progress of a long operation is judged by these. */
+    readonly history: string[] = [];
 
-    constructor(message: string) {
+    constructor(message: string, public timeout = 0) {
         this.message = message;
+        this.history.push(message);
         Notice.all.push(this);
+    }
+
+    setMessage(message: string): void {
+        this.message = message;
+        this.history.push(message);
+    }
+
+    hide(): void {
+        this.hidden = true;
     }
 }
 

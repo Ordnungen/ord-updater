@@ -88,7 +88,7 @@ export default class OrdUpdater extends Plugin {
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
-                                const count = await this.batchUpdate(files, true);
+                                const count = await this.batchUpdateWithProgress(files, true);
                                 if (this.settings.autoIndex) {
                                     await this.updateIndexesDeep([file, ...this.collectFoldersDeep(file)]);
                                 }
@@ -169,7 +169,7 @@ export default class OrdUpdater extends Plugin {
             }
         }
 
-        const count = await this.batchUpdate(files, true);
+        const count = await this.batchUpdateWithProgress(files, true);
         if (this.settings.autoIndex) {
             await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
         }
@@ -339,7 +339,7 @@ export default class OrdUpdater extends Plugin {
         }
     }
 
-    private async batchUpdate(files: TFile[], isManual: boolean): Promise<number> {
+    private async batchUpdate(files: TFile[], isManual: boolean, onProgress?: (done: number, total: number) => void): Promise<number> {
         this.batchCount++;
         try {
             const results = new Array(files.length).fill(false);
@@ -351,10 +351,29 @@ export default class OrdUpdater extends Plugin {
                 for (let j = 0; j < batchResults.length; j++) {
                     results[i + j] = batchResults[j];
                 }
+                onProgress?.(Math.min(i + batch.length, files.length), files.length);
             }
             return results.filter(Boolean).length;
         } finally {
             this.batchCount--;
+        }
+    }
+
+    /**
+     * The same work, but with a running notice. A vault-wide update takes minutes:
+     * without it the user sees nothing happening and cannot tell it from a freeze.
+     * Short operations are left alone — a notice that flashes for a second is noise.
+     */
+    private async batchUpdateWithProgress(files: TFile[], isManual: boolean): Promise<number> {
+        if (files.length <= this.BATCH_SIZE) return this.batchUpdate(files, isManual);
+
+        const notice = new Notice(t('noticeProgress', { done: '0', total: String(files.length) }), 0);
+        try {
+            return await this.batchUpdate(files, isManual, (done, total) => {
+                notice.setMessage(t('noticeProgress', { done: String(done), total: String(total) }));
+            });
+        } finally {
+            notice.hide();
         }
     }
 

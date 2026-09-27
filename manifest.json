@@ -6,6 +6,5 @@
     "description": "Automatically updates frontmatter properties based on folder structure. Renames files and folders with spaces.",
     "author": "Ordnung",
     "authorUrl": "https://github.com/Ordnungen",
-    "fundingUrl": "https://github.com/Ordnungen",
     "isDesktopOnly": false
 }

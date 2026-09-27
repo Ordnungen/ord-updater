@@ -372,6 +372,9 @@ export class Vault {
     private contents = new Map<string, string>();
     private listeners: Record<string, Listener[]> = {};
 
+    /** Только для проверок: пути, запись свойств в которые должна упасть. */
+    readonly failOn = new Set<string>();
+
     // ----- registry helpers used by the checks
 
     addFile(path: string, content = ''): TFile {
@@ -624,6 +627,11 @@ export class FileManager {
         file: TFile,
         fn: (frontmatter: Record<string, unknown>) => void | Promise<void>,
     ): Promise<void> {
+        // Только для проверок: так воспроизводится заметка, которую записать нельзя
+        // (конфликт синхронизации, только для чтения, чужая ошибка).
+        if (this.vault.failOn.has(file.path)) {
+            throw new Error(`stub: cannot write the properties of "${file.path}"`);
+        }
         const content = this.vault.getContent(file.path);
         const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
         const frontmatter = match ? parseFrontmatterBlock(match[1] ?? '') : {};

@@ -958,6 +958,60 @@ section('9ж. Значок в ленте');
     partial.plugin.onunload();
 }
 
+section('9з. Если записать не удалось');
+{
+    // Так выглядит настоящая неудача: заметку записать нельзя (конфликт
+    // синхронизации, файл только для чтения, чужая ошибка). Раньше она молча
+    // считалась «менять нечего», и итог выглядел полностью успешным.
+    const { app, plugin } = await startPlugin({ 'Раздел/Заметка.md': '', 'Раздел/Вторая.md': '' });
+    app.vault.failOn.add('Раздел/Вторая.md');
+    Notice.all.length = 0;
+
+    const done = stub(plugin).ribbons[0]?.dispatch('click') ?? Promise.resolve();
+    await drain();
+    await Modal.open[0]?.click('Обновить');
+    await done;
+    const finished = (): boolean => Notice.all.some(notice =>
+        notice.message.startsWith('ORDupdater: обновлено') && !notice.message.includes(' из '));
+    for (let step = 0; step < 20 && !finished(); step++) await advance(1000);
+
+    assert('9з.1 итог называет неудачу, а не только успех',
+        Notice.all.some(notice => /обновлено \d+ файлов?, не удалось обновить 1/.test(notice.message)),
+        Notice.all.map(notice => notice.message).join(' | ') || 'уведомлений нет');
+    assert('9з.2 остальные заметки записаны, несмотря на неудачу',
+        app.vault.getContent('Раздел/Заметка.md').startsWith('---'),
+        app.vault.getContent('Раздел/Заметка.md').split('\n').slice(0, 2).join(' | '));
+    assert('9з.3 незаписанная заметка осталась нетронутой',
+        app.vault.getContent('Раздел/Вторая.md') === '',
+        app.vault.getContent('Раздел/Вторая.md').slice(0, 30) || 'пусто');
+    assert('9з.4 отказ снимается — набор пуст',
+        app.vault.failOn.delete('Раздел/Вторая.md') && app.vault.failOn.size === 0,
+        `отказов в наборе: ${app.vault.failOn.size}`);
+    app.vault.failOn.clear();
+    plugin.onunload();
+}
+
+section('9и. Одиночная заметка при неудаче');
+{
+    const { app, plugin } = await startPlugin({ 'Заметка.md': '' });
+    app.workspace.setActiveFile(app.vault.fileAt('Заметка.md'));
+    app.vault.failOn.add('Заметка.md');
+    Notice.all.length = 0;
+    await stub(plugin).commands.find(command => command.id === 'update-current-file')?.callback();
+    await advance(10);
+
+    assert('9и.1 о неудаче на одной заметке сказано прямо',
+        Notice.all.some(notice => notice.message.includes('не удалось обновить') && notice.message.includes('Заметка')),
+        Notice.all.map(notice => notice.message).join(' | ') || 'уведомлений нет');
+    assert('9и.2 успех вместо неудачи не показывается',
+        !Notice.all.some(notice => notice.message.startsWith('ORDupdater: обновлено «')),
+        Notice.all.map(notice => notice.message).join(' | ') || 'уведомлений нет');
+    assert('9и.3 заметка осталась нетронутой', app.vault.getContent('Заметка.md') === '',
+        app.vault.getContent('Заметка.md').slice(0, 30) || 'пусто');
+    app.vault.failOn.clear();
+    plugin.onunload();
+}
+
 section('9д. Правила свойств напрямую');
 {
     // Модуль свойств чистый: его правила проверяются без Obsidian и без хранилища.

@@ -8,6 +8,15 @@ import {
 } from './settings';
 import { asText, parseSkipNames, planProperties, planStaleTraces, tagFor, type NoteTraces } from './properties';
 
+/** Чем закончилось обновление заметки. «Нечего менять» и «не вышло» — разное. */
+type UpdateOutcome = 'changed' | 'unchanged' | 'failed';
+
+/** Итог пачки: сколько заметок изменилось и сколько записать не удалось. */
+interface UpdateCounts {
+    changed: number;
+    failed: number;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -38,8 +47,10 @@ export default class OrdUpdater extends Plugin {
             callback: async () => {
                 const file = this.app.workspace.getActiveFile();
                 if (file) {
-                    await this.safeUpdate(file, true);
-                    new Notice(t('noticeFileUpdated', { name: file.basename }));
+                    const outcome = await this.safeUpdate(file, true);
+                    new Notice(outcome === 'failed'
+                        ? t('noticeFileFailed', { name: file.basename })
+                        : t('noticeFileUpdated', { name: file.basename }));
                 } else {
                     new Notice(t('noticeNoFile'));
                 }
@@ -90,12 +101,14 @@ export default class OrdUpdater extends Plugin {
                                     }
                                 }
                                 const files = await this.getMarkdownFilesRecursive(file);
-                                const count = await this.batchUpdateWithProgress(files, true);
+                                const { changed, failed } = await this.batchUpdateWithProgress(files, true);
                                 if (this.settings.autoIndex) {
                                     await this.updateIndexesDeep([file, ...this.collectFoldersDeep(file)]);
                                 }
                                 this.contentCache.clear();
-                                new Notice(t('noticeFolderUpdated', { n: String(count), name: file.name }));
+                                new Notice(failed > 0
+                                    ? t('noticeFolderFailures', { n: String(changed), failed: String(failed), name: file.name })
+                                    : t('noticeFolderUpdated', { n: String(changed), name: file.name }));
                             });
                     });
                 } else if (file instanceof TFile && file.extension === 'md') {
@@ -171,18 +184,23 @@ export default class OrdUpdater extends Plugin {
             }
         }
 
-        const count = await this.batchUpdateWithProgress(files, true);
+        const { changed, failed } = await this.batchUpdateWithProgress(files, true);
         if (this.settings.autoIndex) {
             await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
         }
         this.contentCache.clear();
-        new Notice(t('noticeUpdated', { n: String(count) }));
+        new Notice(failed > 0
+            ? t('noticeFailures', { n: String(changed), failed: String(failed) })
+            : t('noticeUpdated', { n: String(changed) }));
     }
 
     /** Update on Ctrl/Cmd+S: Obsidian saves right after the key event. */
     private async updateActiveFile(): Promise<void> {
         const file = this.app.workspace.getActiveFile();
-        if (file) await this.safeUpdate(file, true);
+        // Ctrl/Cmd+S молчит об успехе, но о неудаче сказать обязан.
+        if (file && await this.safeUpdate(file, true) === 'failed') {
+            new Notice(t('noticeFileFailed', { name: file.basename }));
+        }
     }
 
     /** Debounced index refresh after an automatic edit. */
@@ -271,14 +289,14 @@ export default class OrdUpdater extends Plugin {
         if (file.parent) await this.updateFolderIndex(file.parent);
     }
 
-    private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
-        if (!(file instanceof TFile) || file.extension !== 'md') return false;
-        if (this.shouldSkip(file.path)) return false;
+    private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<UpdateOutcome> {
+        if (!(file instanceof TFile) || file.extension !== 'md') return 'unchanged';
+        if (this.shouldSkip(file.path)) return 'unchanged';
         // Debounce: skip auto events within DEBOUNCE_MS, but NOT manual
         if (!isManual) {
             const expiry = this.processing.get(file.path);
             if (expiry) {
-                if (Date.now() < expiry) return false;
+                if (Date.now() < expiry) return 'unchanged';
                 this.processing.delete(file.path);
             }
         }
@@ -318,7 +336,7 @@ export default class OrdUpdater extends Plugin {
         }
 
         // Step 3: skip index files
-        if (file.parent && file.basename === file.parent.name) return false;
+        if (file.parent && file.basename === file.parent.name) return 'unchanged';
 
         // Step 4: update frontmatter
         try {
@@ -335,28 +353,33 @@ export default class OrdUpdater extends Plugin {
                     window.setTimeout(() => { void this.updateIndexAfterEdit(parent, key); }, 1000);
                 }
             }
-            return changed;
+            return changed ? 'changed' : 'unchanged';
         } catch (error) {
+            // «Не вышло» — отдельный исход: пользователю об этом надо сказать, а не
+            // показывать успех. Подробности — в консоли, с путём заметки.
             console.error(`ORDupdater: could not update the properties of "${file.path}"`, error);
-            return false;
+            return 'failed';
         }
     }
 
-    private async batchUpdate(files: TFile[], isManual: boolean, onProgress?: (done: number, total: number) => void): Promise<number> {
+    private async batchUpdate(files: TFile[], isManual: boolean, onProgress?: (done: number, total: number) => void): Promise<UpdateCounts> {
         this.batchCount++;
         try {
-            const results = new Array(files.length).fill(false);
+            const results = new Array<UpdateOutcome>(files.length).fill('unchanged');
             for (let i = 0; i < files.length; i += this.BATCH_SIZE) {
                 const batch = files.slice(i, i + this.BATCH_SIZE);
                 const batchResults = await Promise.all(
                     batch.map(f => this.safeUpdate(f, isManual))
                 );
                 for (let j = 0; j < batchResults.length; j++) {
-                    results[i + j] = batchResults[j];
+                    results[i + j] = batchResults[j] ?? 'unchanged';
                 }
                 onProgress?.(Math.min(i + batch.length, files.length), files.length);
             }
-            return results.filter(Boolean).length;
+            return {
+                changed: results.filter(outcome => outcome === 'changed').length,
+                failed: results.filter(outcome => outcome === 'failed').length,
+            };
         } finally {
             this.batchCount--;
         }
@@ -367,7 +390,7 @@ export default class OrdUpdater extends Plugin {
      * without it the user sees nothing happening and cannot tell it from a freeze.
      * Short operations are left alone — a notice that flashes for a second is noise.
      */
-    private async batchUpdateWithProgress(files: TFile[], isManual: boolean): Promise<number> {
+    private async batchUpdateWithProgress(files: TFile[], isManual: boolean): Promise<UpdateCounts> {
         if (files.length <= this.BATCH_SIZE) return this.batchUpdate(files, isManual);
 
         const notice = new Notice(t('noticeProgress', { done: '0', total: String(files.length) }), 0);

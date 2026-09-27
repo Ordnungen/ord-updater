@@ -142,7 +142,7 @@ export class FakeElement {
         (this.listeners[type] ??= []).push(handler);
     }
 
-    /** Fire a listener and let the event loop settle afterwards. */
+    /** Fire a listener and let the event loop settle afterward. */
     async dispatch(type: string, event: unknown = {}): Promise<void> {
         for (const handler of this.listeners[type] ?? []) handler(event);
         await drain();
@@ -247,15 +247,17 @@ export interface CachedMetadata {
 export function readFrontmatter(content: string): Record<string, unknown> {
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!match) return {};
-    return parseFrontmatterBlock(match[1]);
+    return parseFrontmatterBlock(match[1] ?? '');
 }
 
 export function parseFrontmatterBlock(text: string): Record<string, unknown> {
     const lines = text.split(/\r?\n/);
     const result: Record<string, unknown> = {};
     let index = 0;
+    // Строка может отсутствовать по типу — тогда она пустая, и цикл идёт дальше.
+    const at = (position: number): string => lines[position] ?? '';
     while (index < lines.length) {
-        const line = lines[index];
+        const line = at(index);
         if (line.trim() === '' || /^\s*#/.test(line)) {
             index++;
             continue;
@@ -265,23 +267,23 @@ export function parseFrontmatterBlock(text: string): Record<string, unknown> {
             index++;
             continue;
         }
-        const key = keyMatch[1].trim();
-        const value = keyMatch[2];
+        const key = (keyMatch[1] ?? '').trim();
+        const value = keyMatch[2] ?? '';
         if (value === '') {
             const items: string[] = [];
             const nested: Record<string, unknown> = {};
             let isList = false;
             let isMap = false;
             let next = index + 1;
-            while (next < lines.length && /^\s+/.test(lines[next]) && lines[next].trim() !== '') {
-                if (/^\s+-/.test(lines[next])) {
+            while (next < lines.length && /^\s+/.test(at(next)) && at(next).trim() !== '') {
+                if (/^\s+-/.test(at(next))) {
                     isList = true;
-                    items.push(unquote(lines[next].trim().replace(/^-\s*/, '')));
+                    items.push(unquote(at(next).trim().replace(/^-\s*/, '')));
                 } else {
-                    const inner = lines[next].match(/^\s+([^\s#][^:]*?):\s*(.*)$/);
+                    const inner = at(next).match(/^\s+([^\s#][^:]*?):\s*(.*)$/);
                     if (inner) {
                         isMap = true;
-                        nested[inner[1].trim()] = scalar(inner[2]);
+                        nested[(inner[1] ?? '').trim()] = scalar(inner[2] ?? '');
                     }
                 }
                 next++;
@@ -293,8 +295,8 @@ export function parseFrontmatterBlock(text: string): Record<string, unknown> {
         if (/^[|>]/.test(value)) {
             const block: string[] = [];
             let next = index + 1;
-            while (next < lines.length && (/^\s+/.test(lines[next]) || lines[next].trim() === '')) {
-                block.push(lines[next].replace(/^\s{2}/, ''));
+            while (next < lines.length && (/^\s+/.test(at(next)) || at(next).trim() === '')) {
+                block.push(at(next).replace(/^\s{2}/, ''));
                 next++;
             }
             result[key] = value.startsWith('>') ? block.join(' ').trim() : block.join('\n').replace(/\s+$/, '');
@@ -624,7 +626,7 @@ export class FileManager {
     ): Promise<void> {
         const content = this.vault.getContent(file.path);
         const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-        const frontmatter = match ? parseFrontmatterBlock(match[1]) : {};
+        const frontmatter = match ? parseFrontmatterBlock(match[1] ?? '') : {};
         const body = match ? content.slice(match[0].length) : content;
         await fn(frontmatter);
         await this.vault.modify(file, `---\n${serializeFrontmatter(frontmatter)}---${body}`);
@@ -795,7 +797,7 @@ export class Setting {
 export abstract class PluginSettingTab {
     containerEl = new FakeElement('div');
 
-    constructor(public app: App, public plugin: Plugin) {}
+    protected constructor(public app: App, public plugin: Plugin) {}
 
     /** Declarative tab: Obsidian renders the controls from these definitions. */
     getSettingDefinitions?(): unknown[];

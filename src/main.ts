@@ -19,8 +19,6 @@ export default class OrdUpdater extends Plugin {
     private readonly BATCH_SIZE = 20;
     private contentCache: Map<string, string> = new Map();
     private batchCount = 0;
-    private get inBatch(): boolean { return this.batchCount > 0; }
-
     async onload(): Promise<void> {
         await this.loadSettings();
         this.applyLockStyle();
@@ -198,7 +196,7 @@ export default class OrdUpdater extends Plugin {
      * Names the plugin leaves alone: hidden entries always (Obsidian's own
      * folders among them), plus whatever the `skipNames` setting lists. The
      * setting repeats the names that used to be hardcoded, so the default
-     * behaviour is the one users already know.
+     * behavior is the one users already know.
      */
     private shouldSkip(path: string): boolean {
         const skip = parseSkipNames(this.settings.skipNames);
@@ -207,6 +205,7 @@ export default class OrdUpdater extends Plugin {
 
     /** Vault events expect a void callback; the work itself is awaited inside. */
     private handleAutoUpdate(file: TAbstractFile): void {
+        // fire-and-forget: safeUpdate ловит свои ошибки сам, ждать нечего
         void this.safeUpdate(file, false);
     }
 
@@ -506,10 +505,10 @@ export default class OrdUpdater extends Plugin {
                                 const updateMatch = fm.match(/update:\s*(.+?)(?:\n|$)/);
                                 const tagsMatch = fm.match(/tags:\s*\n([\s\S]*?)(?:\n\S|\n\n|$)/);
 
-                                if (dateMatch) date = dateMatch[1].trim();
-                                if (updateMatch) update = updateMatch[1].trim();
+                                if (dateMatch) date = (dateMatch[1] ?? '').trim();
+                                if (updateMatch) update = (updateMatch[1] ?? '').trim();
                                 if (tagsMatch) {
-                                    const tagLines = tagsMatch[1]
+                                    const tagLines = (tagsMatch[1] ?? '')
                                         .split('\n')
                                         .map(l => l.trim().replace(/^-\s*"?|"?$/g, ''))
                                         .filter(Boolean);

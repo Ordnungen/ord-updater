@@ -113,7 +113,7 @@ function fakeMenu(): { menu: unknown; items: { title: string; run: () => Promise
                 title: '',
                 setTitle(title: string) { this.title = title; items.push({ title, run: async () => undefined }); return this; },
                 setIcon() { return this; },
-                onClick(run: () => Promise<void>) { items[items.length - 1].run = run; return this; },
+                onClick(run: () => Promise<void>) { const last = items[items.length - 1]; if (last) last.run = run; return this; },
             };
             build(item);
         },
@@ -593,11 +593,11 @@ section('8. События и дебаунс');
     const folderMenu = fakeMenu();
     app.workspace.trigger('file-menu', folderMenu.menu, app.vault.getAbstractFileByPath('Папка'));
     assert('8.8 в меню папки есть пункт обновления с именем продукта',
-        folderMenu.items.length === 1 && folderMenu.items[0].title.startsWith('ORDupdater: '),
+        folderMenu.items.length === 1 && (folderMenu.items[0]?.title ?? '').startsWith('ORDupdater: '),
         folderMenu.items.map(item => item.title).join(', ') || 'пунктов нет');
 
     Notice.all.length = 0;
-    await folderMenu.items[0].run();
+    await folderMenu.items[0]?.run();
     await drain();
     assert('8.9 пункт меню обрабатывает папку и сообщает об этом',
         Notice.all.some(notice => notice.message.startsWith('ORDupdater: ')),
@@ -606,7 +606,7 @@ section('8. События и дебаунс');
     const fileMenu = fakeMenu();
     app.workspace.trigger('file-menu', fileMenu.menu, app.vault.getAbstractFileByPath('Папка/Заметка.md'));
     assert('8.10 в меню заметки есть пункт обновления файла',
-        fileMenu.items.length === 1 && fileMenu.items[0].title.startsWith('ORDupdater: '));
+        fileMenu.items.length === 1 && (fileMenu.items[0]?.title ?? '').startsWith('ORDupdater: '));
     plugin.onunload();
 }
 
@@ -709,7 +709,7 @@ section('9а. Настройки в работе');
     await set(plugin, 'updateIndexOnSave', false);
     const freshFolder = app.vault.addFolder('Новый раздел');
     app.vault.addFile('Новый раздел/Внутри.md', '');
-    await stub(plugin).ribbons[0].dispatch('click');
+    await stub(plugin).ribbons[0]?.dispatch('click');
     await drain();
     await Modal.open[0]?.click('Обновить');
     await advance(10);
@@ -830,7 +830,7 @@ section('9г. Подтверждение массовой операции');
     const before = app.vault.getContent('Папка/Заметка.md');
 
     // Отмена: работа не выполняется.
-    const cancelled = stub(plugin).ribbons[0].dispatch('click');
+    const cancelled = stub(plugin).ribbons[0]?.dispatch('click') ?? Promise.resolve();
     await drain();
     const opened = Modal.open[0];
     assert('9г.1 кнопка ленты сначала спрашивает', opened !== undefined);
@@ -849,7 +849,7 @@ section('9г. Подтверждение массовой операции');
 
     // Согласие: работа выполняется.
     Notice.all.length = 0;
-    const confirmed = stub(plugin).ribbons[0].dispatch('click');
+    const confirmed = stub(plugin).ribbons[0]?.dispatch('click') ?? Promise.resolve();
     await drain();
     await Modal.open[0]?.click('Обновить');
     await confirmed;
@@ -882,7 +882,7 @@ section('9е. Ход массовой операции');
     const { plugin } = await startPlugin(many);
     Notice.all.length = 0;
 
-    const done = stub(plugin).ribbons[0].dispatch('click');
+    const done = stub(plugin).ribbons[0]?.dispatch('click') ?? Promise.resolve();
     await drain();
     await Modal.open[0]?.click('Обновить');
     await done;
@@ -901,7 +901,7 @@ section('9е. Ход массовой операции');
         steps.map(notice => notice.history.join(' -> ')).join(' | ') || 'хода не видно');
     assert('9е.2 счётчик только растёт и доходит до числа заметок',
         counts.length > 1
-        && counts.every((value, index) => index === 0 || value >= counts[index - 1])
+        && counts.every((value, index) => index === 0 || value >= (counts[index - 1] ?? 0))
         && counts[counts.length - 1] === 45,
         counts.join(', '));
     assert('9е.3 уведомление о ходе не исчезает само и убирается в конце',
@@ -914,7 +914,7 @@ section('9е. Ход массовой операции');
     // На короткой папке сообщения о ходе быть не должно: оно мигнуло бы зря.
     const few = await startPlugin({ 'Малое/Один.md': '', 'Малое/Два.md': '' });
     Notice.all.length = 0;
-    const short = stub(few.plugin).ribbons[0].dispatch('click');
+    const short = stub(few.plugin).ribbons[0]?.dispatch('click') ?? Promise.resolve();
     await drain();
     await Modal.open[0]?.click('Обновить');
     await short;

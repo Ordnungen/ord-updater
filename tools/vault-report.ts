@@ -55,7 +55,7 @@ function collectNotes(root: string): Note[] {
 
 function frontmatterBlock(content: string): string | null {
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    return match ? match[1] : null;
+    return match ? (match[1] ?? null) : null;
 }
 
 function report(root: string): void {
@@ -104,9 +104,9 @@ function report(root: string): void {
                 if (nestedExamples.length < 5) nestedExamples.push(`${note.relative} (${line.trim()})`);
             }
             previousIndent = indent;
-            const value = keyMatch[2].trim();
+            const value = (keyMatch[2] ?? '').trim();
             if (/^-?\d+(\.\d+)?$/.test(value) || /^(true|false)$/.test(value)) typedScalars++;
-            if (/^\[.*\]$/.test(value) && keyMatch[1].trim() === 'tags') inlineTags++;
+            if (/^\[.*\]$/.test(value) && (keyMatch[1] ?? '').trim() === 'tags') inlineTags++;
         }
         const frontmatter = readFrontmatter(note.content);
         if ('date' in frontmatter) withDate++;
@@ -119,7 +119,7 @@ function report(root: string): void {
         if (folder && note.relative.split('/').pop() === `${folder}.md`) nameEqualsFolder++;
         const parts = note.relative.split('/');
         if (parts.includes('node_modules') || parts.includes('src') || parts.includes('dist') || parts.includes('build')
-            || parts[parts.length - 1].toLowerCase() === 'readme.md') {
+            || (parts[parts.length - 1] ?? '').toLowerCase() === 'readme.md') {
             skippedByHardcodedName++;
             if (skippedExamples.length < 5) skippedExamples.push(note.relative);
         }

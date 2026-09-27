@@ -11,7 +11,7 @@ export interface ConfirmTexts {
 /**
  * A question before work that touches many notes at once.
  *
- * Obsidian's own `Modal` gives the native look and keyboard behaviour, and the
+ * Obsidian's own `Modal` gives the native look and keyboard behavior, and the
  * answer comes back as a promise, so the caller reads as a single line.
  */
 class ConfirmModal extends Modal {

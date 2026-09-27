@@ -65,7 +65,7 @@ const walk = (folder: string): void => {
         const relative = path.relative(vaultPath, full).replace(/\\/g, '/');
         const parts = relative.split('/');
         if (parts.includes('node_modules') || parts.includes('src') || parts.includes('dist') || parts.includes('build')
-            || parts[parts.length - 1].toLowerCase() === 'readme.md') {
+            || (parts[parts.length - 1] ?? '').toLowerCase() === 'readme.md') {
             skippedByRules.push(relative);
         }
         if (read >= limit) continue;

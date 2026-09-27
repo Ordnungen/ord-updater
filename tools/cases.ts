@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
-    App, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
+    App, Modal, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
     setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
@@ -705,6 +705,8 @@ section('9а. Настройки в работе');
     const freshFolder = app.vault.addFolder('Новый раздел');
     app.vault.addFile('Новый раздел/Внутри.md', '');
     await stub(plugin).ribbons[0].dispatch('click');
+    await drain();
+    await Modal.open[0]?.click('Обновить');
     await advance(10);
     assert('9а.7 при выключенных индексных заметках кнопка ленты их не создаёт',
         app.vault.getAbstractFileByPath('Новый раздел/Новый раздел.md') === null
@@ -814,6 +816,55 @@ section('9в. Перенос заметки между папками');
         inNewFolder.includes('[[Своё]]') && inNewFolder.includes('моё')
         && inNewFolder.includes('Новый') && !/tags:[\s\S]*?Старый/.test(inNewFolder),
         inNewFolder.split('\n').slice(0, 10).join(' | '));
+    plugin.onunload();
+}
+
+section('9г. Подтверждение массовой операции');
+{
+    const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '', 'Папка/Вторая.md': '' });
+    const before = app.vault.getContent('Папка/Заметка.md');
+
+    // Отмена: работа не выполняется.
+    const cancelled = stub(plugin).ribbons[0].dispatch('click');
+    await drain();
+    const opened = Modal.open[0];
+    assert('9г.1 кнопка ленты сначала спрашивает', opened !== undefined);
+    assert('9г.2 в вопросе названо число заметок и есть обе кнопки',
+        (opened?.allTexts().join(' ') ?? '').includes('2')
+        && (opened?.buttons().map(button => button.textContent).join(',') ?? '') === 'Отмена,Обновить',
+        `${opened?.allTexts().join(' | ')} :: ${opened?.buttons().map(button => button.textContent).join(', ')}`);
+    await opened?.click('Отмена');
+    await cancelled;
+    await advance(10);
+    assert('9г.3 отмена ничего не пишет',
+        app.vault.getContent('Папка/Заметка.md') === before
+        && app.vault.getAbstractFileByPath('Папка/Папка.md') === null
+        && Modal.open.length === 0,
+        `заметка: ${app.vault.getContent('Папка/Заметка.md').slice(0, 12)} | открытых окон: ${Modal.open.length} | уведомления: ${Notice.all.map(notice => notice.message).join(' / ') || 'нет'}`);
+
+    // Согласие: работа выполняется.
+    Notice.all.length = 0;
+    const confirmed = stub(plugin).ribbons[0].dispatch('click');
+    await drain();
+    await Modal.open[0]?.click('Обновить');
+    await confirmed;
+    // Ждём, пока цепочка обновления доедет до конца: помощник дренирует
+    // микрозадачи порциями, а обновление всего хранилища их длиннее.
+    for (let step = 0; step < 10 && !Notice.all.some(notice => notice.message.startsWith('ORDupdater: обновлено')); step++) {
+        await advance(1000);
+    }
+    assert('9г.4 после согласия свойства обновлены и индекс создан',
+        app.vault.getContent('Папка/Заметка.md').startsWith('---')
+        && app.vault.getAbstractFileByPath('Папка/Папка.md') !== null,
+        app.vault.getContent('Папка/Заметка.md').split('\n').slice(0, 4).join(' | '));
+    assert('9г.5 в конце сообщается, сколько заметок обновлено',
+        Notice.all.some(notice => notice.message.startsWith('ORDupdater: обновлено')),
+        Notice.all.map(notice => notice.message).join(' | ') || 'уведомлений нет');
+
+    // Закрытие окна мимо кнопок — это отказ.
+    Modal.open[0]?.close();
+    await drain();
+    assert('9г.6 окно можно закрыть, и это тоже отказ', Modal.open.length === 0);
     plugin.onunload();
 }
 

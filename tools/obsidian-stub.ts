@@ -123,6 +123,12 @@ export class FakeElement {
         this.attributes[name] = value;
     }
 
+    /** The DOM helper Obsidian adds: set the text of this element. */
+    setText(text: string): this {
+        this.textContent = text;
+        return this;
+    }
+
     getAttribute(name: string): string | null {
         return this.attributes[name] ?? null;
     }
@@ -742,6 +748,30 @@ export class Setting {
         return this;
     }
 
+    addButton(callback: (button: {
+        setButtonText: (text: string) => unknown;
+        setCta: () => unknown;
+        onClick: (handler: () => unknown) => unknown;
+    }) => unknown): this {
+        const element = this.settingEl.createEl('button');
+        const button = {
+            setButtonText: (text: string) => {
+                element.textContent = text;
+                return button;
+            },
+            setCta: () => {
+                element.addClass('mod-cta');
+                return button;
+            },
+            onClick: (handler: () => unknown) => {
+                element.addEventListener('click', () => { void handler(); });
+                return button;
+            },
+        };
+        callback(button);
+        return this;
+    }
+
     /** The toggle control of this setting, for the checks. */
     get control(): FakeElement | null {
         return this.settingEl.children.find(child => child.getAttribute('data-value') !== null) ?? null;
@@ -782,6 +812,65 @@ export interface Command {
     id: string;
     name: string;
     callback: () => unknown;
+}
+
+/**
+ * A modal window, as far as the plugin uses it: a title, a content element and
+ * buttons. Open windows are recorded, so a check can answer them the way a user
+ * would — by pressing a button with the text it sees.
+ */
+export class Modal {
+    static open: Modal[] = [];
+    titleEl = new FakeElement('div');
+    contentEl = new FakeElement('div');
+    containerEl = new FakeElement('div');
+
+    constructor(public app: App) {}
+
+    open(): void {
+        Modal.open.push(this);
+        this.onOpen();
+    }
+
+    close(): void {
+        const index = Modal.open.indexOf(this);
+        if (index >= 0) Modal.open.splice(index, 1);
+        this.onClose();
+    }
+
+    /** Press the button with this text, like the user does. */
+    async click(text: string): Promise<void> {
+        const found = this.buttons().find(button => button.textContent === text);
+        if (!found) {
+            throw new Error(`в окне нет кнопки «${text}»: есть ${this.buttons().map(b => b.textContent).join(', ')}`);
+        }
+        await found.dispatch('click');
+    }
+
+    buttons(): FakeElement[] {
+        const found: FakeElement[] = [];
+        const walk = (node: FakeElement): void => {
+            for (const child of node.children) {
+                if (child.tagName === 'button') found.push(child);
+                walk(child);
+            }
+        };
+        walk(this.contentEl);
+        return found;
+    }
+
+    /** All texts of the window, for checks about wording. */
+    allTexts(): string[] {
+        return [...this.titleEl.texts(), ...this.contentEl.texts()];
+    }
+
+    onOpen(): void {
+        // nothing: the checks look at what the plugin filled in
+    }
+
+    onClose(): void {
+        this.contentEl.empty();
+    }
 }
 
 export abstract class Plugin {

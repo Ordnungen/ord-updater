@@ -1,4 +1,5 @@
 import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, getLanguage, moment, normalizePath } from 'obsidian';
+import { confirmAction } from './confirm';
 
 // ---------------------------------------------------------------------------
 // i18n
@@ -15,6 +16,11 @@ const LANG = {
         noticeNoFile: 'ORDupdater: нет активного файла',
         noticeFileUpdated: 'ORDupdater: обновлён "__name__"',
         noticeFolderUpdated: 'ORDupdater: обновлено __n__ файлов в "__name__"',
+        confirmUpdateTitle: 'Обновить свойства во всём хранилище',
+        confirmUpdateMessage: 'Плагин пройдёт по всем заметкам хранилища (__n__) и обновит служебные свойства. Продолжить?',
+        confirmUpdateButton: 'Обновить',
+        confirmCancelButton: 'Отмена',
+        noticeCancelled: 'ORDupdater: отменено',
         settingsTab: 'ORDupdater',
         settingsGeneral: 'Основные настройки',
         settingAutoUpdate: 'Автоматическое обновление',
@@ -51,6 +57,11 @@ const LANG = {
         noticeNoFile: 'ORDupdater: no active file',
         noticeFileUpdated: 'ORDupdater: updated "__name__"',
         noticeFolderUpdated: 'ORDupdater: updated __n__ files in "__name__"',
+        confirmUpdateTitle: 'Update properties in the whole vault',
+        confirmUpdateMessage: 'The plugin will go through all __n__ notes in the vault and update the managed properties. Continue?',
+        confirmUpdateButton: 'Update',
+        confirmCancelButton: 'Cancel',
+        noticeCancelled: 'ORDupdater: cancelled',
         settingsTab: 'ORDupdater',
         settingsGeneral: 'General settings',
         settingAutoUpdate: 'Auto-update',
@@ -217,31 +228,7 @@ export default class OrdUpdater extends Plugin {
         this.applyLockStyle();
 
         this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
-            const vault = this.app.vault;
-            // Rename folders with spaces (only if setting enabled)
-            if (this.settings.sanitizeSpaces) {
-                const allFolders: TFolder[] = [vault.getRoot(), ...this.collectFoldersDeep(vault.getRoot())];
-                allFolders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
-                for (const folder of allFolders) {
-                    if (folder.path.split('/').some(p => p.startsWith('.'))) continue;
-                    if (folder.name.includes(' ')) {
-                        const newName = folder.name.replace(/\s+/g, '_');
-                        try {
-                            await this.app.fileManager.renameFile(folder, normalizePath(`${folder.parent?.path || ''}/${newName}`));
-                        } catch {
-                            console.error(`ORDupdater: could not rename folder "${folder.path}"`);
-                        }
-                    }
-                }
-            }
-            // Second pass: update all files
-            const files = vault.getMarkdownFiles();
-            const count = await this.batchUpdate(files, true);
-            if (this.settings.autoIndex) {
-                await this.updateIndexesDeep(this.collectFoldersDeep(vault.getRoot()));
-            }
-            this.contentCache.clear();
-            new Notice(t('noticeUpdated', { n: String(count) }));
+            await this.updateWholeVault();
         });
 
         // Commands
@@ -263,13 +250,7 @@ export default class OrdUpdater extends Plugin {
             id: 'update-all-files',
             name: t('cmdUpdateVault'),
             callback: async () => {
-                const files = this.app.vault.getMarkdownFiles();
-                const count = await this.batchUpdate(files, true);
-                if (this.settings.autoIndex) {
-                    await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
-                }
-                this.contentCache.clear();
-                new Notice(t('noticeUpdated', { n: String(count) }));
+                await this.updateWholeVault();
             },
         });
 
@@ -355,6 +336,47 @@ export default class OrdUpdater extends Plugin {
 
     private applyLockStyle(): void {
         document.body.classList.toggle('ord-updater-lock', this.settings.lockProperties);
+    }
+
+    /**
+     * Everything at once: rename folders with spaces when that is switched on,
+     * refresh the properties of every note, then rebuild the folder indexes.
+     * It touches the whole vault, so it asks first and reports when it is done.
+     */
+    private async updateWholeVault(): Promise<void> {
+        const files = this.app.vault.getMarkdownFiles();
+        const confirmed = await confirmAction(this.app, {
+            title: t('confirmUpdateTitle'),
+            message: t('confirmUpdateMessage', { n: String(files.length) }),
+            confirm: t('confirmUpdateButton'),
+            cancel: t('confirmCancelButton'),
+        });
+        if (!confirmed) {
+            new Notice(t('noticeCancelled'));
+            return;
+        }
+
+        if (this.settings.sanitizeSpaces) {
+            const folders: TFolder[] = [this.app.vault.getRoot(), ...this.collectFoldersDeep(this.app.vault.getRoot())];
+            folders.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+            for (const folder of folders) {
+                if (this.shouldSkip(folder.path)) continue;
+                if (!folder.name.includes(' ')) continue;
+                const newName = folder.name.replace(/\s+/g, '_');
+                try {
+                    await this.app.fileManager.renameFile(folder, normalizePath(`${folder.parent?.path || ''}/${newName}`));
+                } catch (error) {
+                    console.error(`ORDupdater: could not rename folder "${folder.path}"`, error);
+                }
+            }
+        }
+
+        const count = await this.batchUpdate(files, true);
+        if (this.settings.autoIndex) {
+            await this.updateIndexesDeep(this.collectFoldersDeep(this.app.vault.getRoot()));
+        }
+        this.contentCache.clear();
+        new Notice(t('noticeUpdated', { n: String(count) }));
     }
 
     /** Update on Ctrl/Cmd+S: Obsidian saves right after the key event. */

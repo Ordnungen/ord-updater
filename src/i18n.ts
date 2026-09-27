@@ -9,6 +9,8 @@ import { getLanguage } from 'obsidian';
 
 const EN = {
     ribbonTooltip: 'ORDupdater: update properties',
+    settingRibbon: 'Show the ribbon icon',
+    settingRibbonDesc: 'Adds the "update properties" icon to the ribbon. Changes apply after restarting Obsidian.',
     cmdUpdateFile: 'Update current file properties',
     cmdUpdateVault: 'Update all files in vault',
     menuUpdateFolder: 'ORDupdater: update folder',
@@ -53,6 +55,8 @@ export type LangKey = keyof typeof EN;
 /** Русский словарь: набор ключей и есть английский — недостачу видно компилятору. */
 const RU: Record<LangKey, string> = {
     ribbonTooltip: 'ORDupdater: обновить свойства',
+    settingRibbon: 'Показывать значок в ленте',
+    settingRibbonDesc: 'Добавляет в ленту значок «обновить свойства». Изменения вступают после перезагрузки Obsidian.',
     cmdUpdateFile: 'Обновить свойства текущего файла',
     cmdUpdateVault: 'Обновить свойства всех файлов хранилища',
     menuUpdateFolder: 'ORDupdater: обновить папку',

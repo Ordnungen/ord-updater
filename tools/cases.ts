@@ -246,7 +246,7 @@ section('3. Декларативная вкладка настроек');
     const { plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
     const definitions = settingDefinitions(plugin);
     const keys = definitions.map(item => item.control?.key ?? '');
-    assert('3.1 объявлены все девять настроек', definitions.length === 9, keys.join(', '));
+    assert('3.1 объявлены все десять настроек', definitions.length === 10, keys.join(', '));
     assert('3.2 у каждой настройки свой контрол: переключатель или поле ввода',
         definitions.every(item => item.control?.type === 'toggle' || item.control?.type === 'text')
         && !keys.includes('')
@@ -924,6 +924,38 @@ section('9е. Ход массовой операции');
         Notice.all.map(notice => notice.message).join(' | '));
     few.plugin.onunload();
     plugin.onunload();
+}
+
+section('9ж. Значок в ленте');
+{
+    // Значок в ленте — постоянная точка входа, поэтому у неё есть выключатель.
+    // Вкладка настроек декларативная, поэтому переключатель действует со
+    // следующего запуска — как и авто-обновление, и так об этом и написано.
+    const on = await startPlugin({ 'Раздел/Заметка.md': '' });
+    assert('9ж.1 по умолчанию значок в ленте есть',
+        stub(on.plugin).ribbons.length === 1,
+        `значков: ${stub(on.plugin).ribbons.length}`);
+    assert('9ж.2 у значка правильная подсказка',
+        (stub(on.plugin).ribbons[0]?.getAttribute('aria-label') ?? '').startsWith('ORDupdater: '),
+        stub(on.plugin).ribbons[0]?.getAttribute('aria-label') ?? 'нет');
+    on.plugin.onunload();
+
+    const off = await startPlugin({ 'Раздел/Заметка.md': '' }, { ...DEFAULT_SETTINGS, showRibbonIcon: false });
+    assert('9ж.3 с выключенной настройкой значка нет вовсе',
+        stub(off.plugin).ribbons.length === 0,
+        `значков: ${stub(off.plugin).ribbons.length}`);
+    off.plugin.onunload();
+
+    // Значение приходит из data.json: проверка прочитанного обязана его пропустить.
+    const partial = await startPlugin({}, { showRibbonIcon: false });
+    assert('9ж.4 настройка читается из data.json и не подменяется значением по умолчанию',
+        partial.plugin.getSettings().showRibbonIcon === false,
+        `значение: ${String(partial.plugin.getSettings().showRibbonIcon)}`);
+    assert('9ж.5 выключенный значок не мешает остальным значениям по умолчанию',
+        partial.plugin.getSettings().autoUpdate === DEFAULT_SETTINGS.autoUpdate
+        && partial.plugin.getSettings().skipNames === DEFAULT_SETTINGS.skipNames,
+        `autoUpdate: ${String(partial.plugin.getSettings().autoUpdate)}`);
+    partial.plugin.onunload();
 }
 
 section('9д. Правила свойств напрямую');

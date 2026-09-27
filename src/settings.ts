@@ -16,6 +16,8 @@ export interface ORDupdaterSettings {
     overwriteMode: boolean;
     sanitizeSpaces: boolean;
     lockProperties: boolean;
+    /** Whether the ribbon gets the "update properties" icon. */
+    showRibbonIcon: boolean;
     /** Folders and notes the plugin never touches, comma separated. */
     skipNames: string;
 }
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: ORDupdaterSettings = {
     overwriteMode: false,
     sanitizeSpaces: false,
     lockProperties: false,
+    showRibbonIcon: true,
     // Значения по умолчанию повторяют прежнее поведение: имена, которые плагин
     // пропускал жёстко зашитыми, теперь можно менять в настройках.
     skipNames: 'node_modules, src, dist, build, README.md',
@@ -54,6 +57,7 @@ export function sanitizeSettings(data: unknown): ORDupdaterSettings {
         overwriteMode: flag(raw['overwriteMode'], DEFAULT_SETTINGS.overwriteMode),
         sanitizeSpaces: flag(raw['sanitizeSpaces'], DEFAULT_SETTINGS.sanitizeSpaces),
         lockProperties: flag(raw['lockProperties'], DEFAULT_SETTINGS.lockProperties),
+        showRibbonIcon: flag(raw['showRibbonIcon'], DEFAULT_SETTINGS.showRibbonIcon),
         skipNames: typeof raw['skipNames'] === 'string' ? raw['skipNames'] : DEFAULT_SETTINGS.skipNames,
     };
 }

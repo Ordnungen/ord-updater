@@ -23,9 +23,13 @@ export default class OrdUpdater extends Plugin {
         await this.loadSettings();
         this.applyLockStyle();
 
-        this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
-            await this.updateWholeVault();
-        });
+        // Значок в ленте — единственное постоянное место входа, и оно должно
+        // выключаться: у остальных настроек тоже есть свой переключатель.
+        if (this.settings.showRibbonIcon) {
+            this.addRibbonIcon('refresh-cw', t('ribbonTooltip'), async () => {
+                await this.updateWholeVault();
+            });
+        }
 
         // Commands
         this.addCommand({
@@ -637,6 +641,7 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                     toggle('autoIndex', 'settingIndex', 'settingIndexDesc'),
                     toggle('updateIndexOnSave', 'settingIndexOnSave', 'settingIndexOnSaveDesc'),
                     toggle('lockProperties', 'settingLock', 'settingLockDesc'),
+            toggle('showRibbonIcon', 'settingRibbon', 'settingRibbonDesc'),
                     {
                         name: t('settingSkipNames'),
                         desc: t('settingSkipNamesDesc'),

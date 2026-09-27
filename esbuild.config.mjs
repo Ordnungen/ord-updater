@@ -35,6 +35,8 @@ if (tools) {
         bundle: true,
         platform: "node",
         alias: { obsidian: "./tools/obsidian-stub.ts" },
+        // Браузерные имена подставляются, а не пишутся в глобальный объект.
+        inject: ["./tools/browser.ts"],
         // ESM: the checks read as straight-line code with await at the top level.
         format: "esm",
         target: "node20",

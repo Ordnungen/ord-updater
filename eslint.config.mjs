@@ -53,9 +53,9 @@ export default defineConfig([
             "@typescript-eslint/no-unsafe-argument": "error",
             "@typescript-eslint/no-unsafe-return": "error",
             "obsidianmd/rule-custom-message": "off",
-            "obsidianmd/no-nodejs-modules": "off", // причина: инструмент работает в Node, а не в Obsidian
+            "obsidianmd/no-nodejs-modules": "error", // те же правила, что в проверке сообщества: инструменты берут модули Node только под проверкой платформы
             "obsidianmd/hardcoded-config-path": "off", // причина: проверки подставляют фиктивные пути хранилища
-            "obsidianmd/no-global-this": "off", // причина: инструменты идут в Node, где окно — это globalThis
+            "obsidianmd/no-global-this": "error", // то же правило сообщества: в инструментах окна нет, поэтому глобальный объект берём явно и объясняем это
             "obsidianmd/no-tfile-tfolder-cast": "off", // причина: проверки строят поддельные файлы и папки
             "obsidianmd/no-plugin-as-component": "off", // причина: проверки создают плагин напрямую, без PluginManager
             // Причина: проверки явно называют тип поддельного файла (TFile/TFolder),

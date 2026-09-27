@@ -198,23 +198,39 @@ export async function advance(ms: number): Promise<void> {
     await drain();
 }
 
-export function installTimers(target: Record<string, unknown>): void {
-    target['setTimeout'] = (fn: () => void, ms = 0): number => {
-        const id = timerId++;
-        timers.push({ id, at: now + ms, fn });
-        return id;
-    };
-    target['clearTimeout'] = (id: number): void => {
-        const index = timers.findIndex(timer => timer.id === id);
-        if (index >= 0) timers.splice(index, 1);
-    };
-    target['window'] = target;
-    target['setInterval'] = target['setTimeout'];
-    target['clearInterval'] = target['clearTimeout'];
-    // The plugin debounces with Date.now(), so the clock has to be one clock:
-    // otherwise "expired" never arrives and the checks test nothing.
-    (Date as unknown as { now: () => number }).now = () => now;
+/**
+ * Ставит инструментам то, что у плагина есть в Obsidian: окно, таймеры и документ.
+ * Единственное место, где инструменты берут глобальный объект Node, — чтобы это
+ * было видно и объяснено один раз, а не расползалось по каталогам кейсов.
+ */
+function setTimeoutFake(fn: () => void, ms = 0): number {
+    const id = timerId++;
+    timers.push({ id, at: now + ms, fn });
+    return id;
 }
+
+function clearTimeoutFake(id: number): void {
+    const index = timers.findIndex(timer => timer.id === id);
+    if (index >= 0) timers.splice(index, 1);
+}
+
+/**
+ * То, что плагин в Obsidian видит как `window`: таймеры и есть он сам.
+ *
+ * Подставляется сборкой через `inject` (см. `tools/browser.ts`), а не записью в
+ * глобальный объект: проверка сообщества запрещает `globalThis` — и права, потому
+ * что инструменты не должны менять окружение.
+ */
+export const fakeWindow = {
+    setTimeout: setTimeoutFake,
+    clearTimeout: clearTimeoutFake,
+    setInterval: setTimeoutFake,
+    clearInterval: clearTimeoutFake,
+};
+
+// Плагин считает время через Date.now(), поэтому часы одни на всех: иначе
+// «истёкший» дебаунс никогда не истечёт, и проверки не проверяют ничего.
+(Date as unknown as { now: () => number }).now = () => now;
 
 export function resetClock(): void {
     timers.length = 0;

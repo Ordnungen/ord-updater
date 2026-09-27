@@ -17,9 +17,9 @@ import {
     mergeList, parseSkipNames, planProperties, planStaleTraces, sameValue, tagFor, toStringList,
 } from '../src/properties';
 import {
-    App, Modal, Notice, Plugin as StubPlugin, advance, drain, installTimers, readFrontmatter, resetClock,
-    setLanguage,
-    document as fakeDocument,
+    App, Modal, Notice, Plugin as StubPlugin, advance, document as fakeDocument, drain,
+    readFrontmatter, resetClock, setLanguage,
+    
 } from './obsidian-stub';
 import { path } from './node-io';
 
@@ -45,9 +45,6 @@ const MANIFEST = {
 // Окружение: у плагина должны быть окно, таймеры, документ и язык.
 // --------------------------------------------------------------------------
 
-const globals = globalThis as unknown as Record<string, unknown>;
-installTimers(globals);
-globals['document'] = fakeDocument;
 
 resetClock();
 setLanguage('ru');

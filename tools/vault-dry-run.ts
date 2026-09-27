@@ -15,12 +15,9 @@ import { path } from './node-io';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
-    App, TFolder, drain, installTimers, readFrontmatter, setLanguage, document as fakeDocument,
+    App, TFolder, drain,  readFrontmatter, setLanguage, 
 } from './obsidian-stub';
 
-const globals = globalThis as unknown as Record<string, unknown>;
-installTimers(globals);
-globals['document'] = fakeDocument;
 
 const args = process.argv.slice(2);
 const vaultPath = args.find(argument => !argument.startsWith('--'));

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
-    App, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, resetClock,
+    App, Notice, Plugin as StubPlugin, TFile, TFolder, advance, drain, installTimers, readFrontmatter, resetClock,
     setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
@@ -639,6 +639,152 @@ section('8. События и дебаунс');
     await api.safeUpdate(app.vault.getAbstractFileByPath('readme.md'), true);
     assert('8.13 заметка readme.md обрабатывается, если убрать её из списка',
         app.vault.getContent('readme.md').startsWith('---'));
+    plugin.onunload();
+}
+
+// --------------------------------------------------------------------------
+// 9а. Настройки действительно работают
+// --------------------------------------------------------------------------
+
+section('9а. Настройки в работе');
+{
+    // Всё, что дальше, идёт через вкладку настроек — как это делает Obsidian:
+    // контрол пишет в plugin.settings и сохраняет. Если настройка ни на что не
+    // влияет, кейс падает.
+    function tab(plugin: OrdUpdater) {
+        const found = stub(plugin).settingTabs[0];
+        if (!found) throw new Error('вкладки настроек нет');
+        return found;
+    }
+    const set = (plugin: OrdUpdater, key: string, value: unknown): Promise<void> =>
+        tab(plugin).setControlValue(key, value);
+
+    const { app, plugin } = await startPlugin({
+        'Папка/Заметка.md': '---\ndescription: руками\ntags:\n  - проект\n---\n\nтекст\n',
+        'Папка/Вторая.md': '',
+    });
+
+    assert('9а.1 вкладка читает то же значение, что и плагин',
+        tab(plugin).getControlValue('autoTags') === plugin.getSettings().autoTags,
+        String(tab(plugin).getControlValue('autoTags')));
+
+    await set(plugin, 'autoTags', false);
+    const note = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(note, true);
+    const withoutTags = readFrontmatter(app.vault.getContent('Папка/Заметка.md'))['tags'];
+    assert('9а.2 выключенные авто-теги не добавляют тег папки, чужой остаётся',
+        Array.isArray(withoutTags) && withoutTags.includes('проект') && !withoutTags.includes('Папка'),
+        JSON.stringify(withoutTags));
+
+    await set(plugin, 'autoLinks', false);
+    await set(plugin, 'autoTags', true);
+    const fresh = app.vault.addFile('Папка/Новая.md', '');
+    await privateApi(plugin).safeUpdate(fresh, true);
+    assert('9а.3 выключенные авто-ссылки не добавляют цепочку',
+        !app.vault.getContent('Папка/Новая.md').includes('links'),
+        app.vault.getContent('Папка/Новая.md').split('\n').slice(0, 6).join(' | '));
+    await set(plugin, 'autoLinks', true);
+
+    await set(plugin, 'lockProperties', true);
+    assert('9а.4 блокировка свойств включается сразу',
+        fakeDocument.body.hasClass('ord-updater-lock'));
+    await set(plugin, 'lockProperties', false);
+    assert('9а.5 и выключается сразу', !fakeDocument.body.hasClass('ord-updater-lock'));
+
+    await set(plugin, 'overwriteMode', true);
+    await privateApi(plugin).safeUpdate(note, true);
+    const reset = app.vault.getContent('Папка/Заметка.md');
+    assert('9а.6 режим перезаписи оставляет только наши свойства',
+        !reset.includes('description') && reset.includes('date:') && reset.includes('Папка'),
+        reset.split('\n').slice(0, 8).join(' | '));
+    await set(plugin, 'overwriteMode', false);
+
+    // Индексные заметки: два независимых переключателя — общий и «при сохранении».
+    await set(plugin, 'autoIndex', false);
+    await set(plugin, 'updateIndexOnSave', false);
+    const freshFolder = app.vault.addFolder('Новый раздел');
+    app.vault.addFile('Новый раздел/Внутри.md', '');
+    await stub(plugin).ribbons[0].dispatch('click');
+    await advance(10);
+    assert('9а.7 при выключенных индексных заметках кнопка ленты их не создаёт',
+        app.vault.getAbstractFileByPath('Новый раздел/Новый раздел.md') === null
+        && freshFolder.children.length === 1,
+        app.vault.describeTree().join(' | '));
+
+    await set(plugin, 'autoIndex', true);
+    await set(plugin, 'updateIndexOnSave', false);
+    const inside = app.vault.getAbstractFileByPath('Новый раздел/Внутри.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(inside, true);
+    assert('9а.8 при выключенном «обновлять индекс при сохранении» заметка индекс не тянет',
+        app.vault.getAbstractFileByPath('Новый раздел/Новый раздел.md') === null);
+    await set(plugin, 'updateIndexOnSave', true);
+
+    // Изменения вкладки сохранены: перезагрузка настроек их не теряет.
+    await plugin.loadSettings();
+    assert('9а.9 изменённые настройки переживают перезагрузку',
+        plugin.getSettings().updateIndexOnSave === true
+        && plugin.getSettings().lockProperties === false);
+    plugin.onunload();
+}
+{
+    // Авто-обновление выключается при загрузке: события хранилища не подписаны.
+    const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': '' }, { autoUpdate: false });
+    const note = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    await app.vault.trigger('modify', note);
+    await advance(10);
+    assert('9а.10 при выключенном авто-обновлении правки ничего не запускают',
+        app.vault.getContent('Папка/Заметка.md') === '');
+    plugin.onunload();
+}
+
+// --------------------------------------------------------------------------
+// 9б. Чужие структуры данных: юникод, глубина, повторы, спорные имена
+// --------------------------------------------------------------------------
+
+section('9б. Разные хранилища');
+{
+    const { app, plugin } = await startPlugin({
+        'Работа 🔥/Проект A/Заметка 🇷🇺.md': '',
+        'Работа 🔥/Проект A/Уже с цепочкой.md': '---\nlinks:\n  - "[[Работа 🔥]]"\n  - "[[Своё]]"\ntags:\n  - моё\n---\n\nтекст\n',
+    });
+
+    const deep = app.vault.getAbstractFileByPath('Работа 🔥/Проект A/Заметка 🇷🇺.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(deep, true);
+    const frontmatter = readFrontmatter(app.vault.getContent('Работа 🔥/Проект A/Заметка 🇷🇺.md'));
+    assert('9б.1 эмодзи и пробелы в именах не мешают свойствам',
+        JSON.stringify(frontmatter['tags']) === JSON.stringify(['Проект A'])
+        && JSON.stringify(frontmatter['links']) === JSON.stringify(['[[Работа 🔥]]', '[[Проект A]]']),
+        `tags ${JSON.stringify(frontmatter['tags'])}, links ${JSON.stringify(frontmatter['links'])}`);
+
+    const existing = app.vault.getAbstractFileByPath('Работа 🔥/Проект A/Уже с цепочкой.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(existing, true);
+    await advance(61_000);
+    const before = app.vault.getContent('Работа 🔥/Проект A/Уже с цепочкой.md');
+    await privateApi(plugin).safeUpdate(existing, true);
+    const after = app.vault.getContent('Работа 🔥/Проект A/Уже с цепочкой.md');
+    assert('9б.2 повторный прогон не плодит дубли ссылок и не меняет файл',
+        after === before
+        && (after.match(/\[\[Работа 🔥\]\]/g) ?? []).length === 1
+        && after.includes('[[Своё]]') && after.includes('моё'),
+        after.split('\n').slice(0, 10).join(' | '));
+
+    const onlyFolders = app.vault.addFolder('Только папки');
+    app.vault.addFolder('Только папки/Вложенная');
+    await privateApi(plugin).updateFolderIndex(onlyFolders);
+    const index = app.vault.getContent('Только папки/Только папки.md');
+    assert('9б.3 индекс папки без заметок перечисляет подпапки и не пишет «пусто»',
+        index.includes('[[Вложенная]]') && !index.includes('_Пусто_'), index.replace(/\n/g, ' | '));
+    plugin.onunload();
+}
+{
+    // Имя заметки совпадает с именем папки: плагин считает это индексом и не
+    // трогает — иначе пользовательская заметка получила бы наши свойства.
+    const { app, plugin } = await startPlugin({ 'Раздел/Раздел.md': 'Это моя заметка, не индекс\n' });
+    const note = app.vault.getAbstractFileByPath('Раздел/Раздел.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(note, true);
+    assert('9б.4 заметка с именем папки остаётся как есть',
+        app.vault.getContent('Раздел/Раздел.md') === 'Это моя заметка, не индекс\n',
+        app.vault.getContent('Раздел/Раздел.md'));
     plugin.onunload();
 }
 

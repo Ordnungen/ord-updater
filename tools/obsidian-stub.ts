@@ -760,6 +760,22 @@ export abstract class PluginSettingTab {
     display(): void {
         // Nothing to do: the checks work with definitions, not with markup.
     }
+
+    /**
+     * What the core does with a declarative control: it reads and writes the
+     * value on `plugin.settings` and persists it. The checks go through these
+     * two methods, so a setting that does not react fails a test.
+     */
+    getControlValue(key: string): unknown {
+        return (this.plugin.settings as Record<string, unknown>)[key];
+    }
+
+    async setControlValue(key: string, value: unknown): Promise<void> {
+        (this.plugin.settings as Record<string, unknown>)[key] = value;
+        const savable = this.plugin as unknown as { saveSettings?: () => Promise<void> };
+        if (typeof savable.saveSettings === 'function') await savable.saveSettings();
+        else await this.plugin.saveData(this.plugin.settings);
+    }
 }
 
 export interface Command {
@@ -771,6 +787,8 @@ export interface Command {
 export abstract class Plugin {
     app: App;
     manifest = { id: 'ord-updater', version: '1.0.4' };
+    /** Settings the declarative controls read and write. */
+    settings: unknown = null;
     commands: Command[] = [];
     ribbons: FakeElement[] = [];
     settingTabs: PluginSettingTab[] = [];

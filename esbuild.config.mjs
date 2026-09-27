@@ -43,6 +43,7 @@ if (tools) {
     };
     await esbuild.build({ ...shared, entryPoints: ["tools/cases.ts"], outfile: ".cache/tools/cases.mjs" });
     await esbuild.build({ ...shared, entryPoints: ["tools/vault-report.ts"], outfile: ".cache/tools/vault-report.mjs" });
+    await esbuild.build({ ...shared, entryPoints: ["tools/vault-dry-run.ts"], outfile: ".cache/tools/vault-dry-run.mjs" });
     process.exit(0);
 }
 

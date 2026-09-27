@@ -35,9 +35,9 @@ const LANG = {
         settingSanitize: 'Убирать пробелы в именах',
         settingSanitizeDesc: 'Переименовывает файлы и папки с пробелами в имени (Мой файл.md → Мой_файл.md).',
         settingRestartNotice: 'Изменения вступят после перезагрузки Obsidian',
-        settingsGeneralDesc: 'Базовые настройки: какие свойства и когда обновлять.',
-        settingsOverwriteNotice: 'Включён режим перезаписи: авто-теги, авто-ссылки и блокировка свойств включены принудительно.',
-        settingsDangerousDesc: 'Эти настройки изменяют файлы в хранилище. Включайте, только если понимаете последствия.',
+        indexSubfolders: 'Подразделы',
+        indexNotes: 'Заметки',
+        indexEmpty: '_Пусто_',
     },
     en: {
         ribbonTooltip: 'ORDupdater: update properties',
@@ -69,9 +69,9 @@ const LANG = {
         settingSanitize: 'Remove spaces in names',
         settingSanitizeDesc: 'Renames files and folders with spaces (My File.md → My_File.md).',
         settingRestartNotice: 'Changes will apply after restarting Obsidian',
-        settingsGeneralDesc: 'Basic settings: which properties to update and when.',
-        settingsOverwriteNotice: 'Overwrite mode is on: auto-tags, auto-links and lock properties are forced on.',
-        settingsDangerousDesc: 'These settings modify files in your vault. Enable only if you understand the consequences.',
+        indexSubfolders: 'Subfolders',
+        indexNotes: 'Notes',
+        indexEmpty: '_Empty_',
     },
 };
 
@@ -701,12 +701,12 @@ export default class OrdUpdater extends Plugin {
             }
             content += '---\n\n';
             if (subfolders.length) {
-                content += `## Subfolders\n\n${subfolders.join('\n')}\n\n`;
+                content += `## ${t('indexSubfolders')}\n\n${subfolders.join('\n')}\n\n`;
             }
             if (notes.length) {
-                content += `## Notes\n\n${notes.join('\n')}\n`;
+                content += `## ${t('indexNotes')}\n\n${notes.join('\n')}\n`;
             } else if (subfolders.length === 0) {
-                content += `_Empty_\n`;
+                content += `${t('indexEmpty')}\n`;
             }
 
             const existing = vault.getAbstractFileByPath(indexPath);

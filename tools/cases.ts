@@ -462,6 +462,31 @@ section('6. Индексные заметки');
     plugin.onunload();
 }
 
+{
+    // Индексная заметка не переписывается, если ничего не изменилось, и её дата
+    // создания сохраняется.
+    const { app, plugin } = await startPlugin({ 'Раздел/Заметка.md': '' });
+    const folder = app.vault.getAbstractFileByPath('Раздел') as unknown as TFolder;
+    await privateApi(plugin).updateFolderIndex(folder);
+    const created = app.vault.getContent('Раздел/Раздел.md');
+    const dateLine = /date: ([^\n]+)/.exec(created)?.[1] ?? '';
+    await advance(61_000);
+    const writes = app.vault.writeCount('Раздел/Раздел.md');
+    await privateApi(plugin).updateFolderIndex(folder);
+    assert('6.10 индекс не переписывается без изменений',
+        app.vault.writeCount('Раздел/Раздел.md') === writes,
+        `записей: ${writes} → ${app.vault.writeCount('Раздел/Раздел.md')}`);
+    assert('6.11 дата создания индексной заметки сохранена',
+        (/date: ([^\n]+)/.exec(app.vault.getContent('Раздел/Раздел.md'))?.[1] ?? '') === dateLine, dateLine);
+
+    // А при изменении состава папки индекс обновляется.
+    await app.vault.create('Раздел/Новая.md', '');
+    await privateApi(plugin).updateFolderIndex(folder);
+    assert('6.12 новая заметка попадает в индекс',
+        app.vault.getContent('Раздел/Раздел.md').includes('[[Новая]]'));
+    plugin.onunload();
+}
+
 // --------------------------------------------------------------------------
 // 7. Переименование папки и осиротевший индекс
 // --------------------------------------------------------------------------

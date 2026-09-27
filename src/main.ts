@@ -687,35 +687,46 @@ export default class OrdUpdater extends Plugin {
                 }
             }
 
-            let content = '---\n';
-            content += `date: ${now}\n`;
-            content += `update: ${now}\n`;
-            content += 'tags:\n';
-            content += `  - "${tagName}"\n`;
-            content += '  - "index"\n';
-            if (folderLinks.length > 0) {
-                content += 'links:\n';
-                for (const link of folderLinks) {
-                    content += `  - "${link}"\n`;
+            // Содержимое собирается без отметок времени: они добавляются в конце,
+            // и заметка переписывается только если что-то другое изменилось.
+            const build = (date: string, update: string): string => {
+                let content = '---\n';
+                content += `date: ${date}\n`;
+                content += `update: ${update}\n`;
+                content += 'tags:\n';
+                content += `  - "${tagName}"\n`;
+                content += '  - "index"\n';
+                if (folderLinks.length > 0) {
+                    content += 'links:\n';
+                    for (const link of folderLinks) {
+                        content += `  - "${link}"\n`;
+                    }
                 }
-            }
-            content += '---\n\n';
-            if (subfolders.length) {
-                content += `## ${t('indexSubfolders')}\n\n${subfolders.join('\n')}\n\n`;
-            }
-            if (notes.length) {
-                content += `## ${t('indexNotes')}\n\n${notes.join('\n')}\n`;
-            } else if (subfolders.length === 0) {
-                content += `${t('indexEmpty')}\n`;
-            }
+                content += '---\n\n';
+                if (subfolders.length) {
+                    content += `## ${t('indexSubfolders')}\n\n${subfolders.join('\n')}\n\n`;
+                }
+                if (notes.length) {
+                    content += `## ${t('indexNotes')}\n\n${notes.join('\n')}\n`;
+                } else if (subfolders.length === 0) {
+                    content += `${t('indexEmpty')}\n`;
+                }
+                return content;
+            };
 
             const existing = vault.getAbstractFileByPath(indexPath);
             if (existing instanceof TFile) {
+                const current = await vault.cachedRead(existing);
+                const frontmatter: Record<string, unknown> = this.app.metadataCache.getFileCache(existing)?.frontmatter ?? {};
+                // Дата создания индексной заметки — не наша: сохраняем её как есть.
+                const created = asText(frontmatter['date']) || now;
+                const updated = asText(frontmatter['update']) || now;
+                if (current === build(created, updated)) return;
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
-                await vault.process(existing, () => content);
+                await vault.process(existing, () => build(created, now));
             } else if (!existing) {
                 this.processing.set(indexPath, Date.now() + this.DEBOUNCE_MS);
-                await vault.create(indexPath, content);
+                await vault.create(indexPath, build(now, now));
             }
         } catch (error) {
             console.error(`ORDupdater: could not write the index of "${folder.path}"`, error);

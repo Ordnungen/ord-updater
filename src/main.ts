@@ -1,4 +1,4 @@
-import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, moment, normalizePath } from 'obsidian';
+import { Plugin, PluginSettingTab, SettingDefinitionControl, SettingDefinitionItem, TFile, TFolder, Notice, TAbstractFile, normalizePath } from 'obsidian';
 import { confirmAction } from './confirm';
 
 import { isRu, t, type LangKey } from './i18n';
@@ -577,10 +577,13 @@ export default class OrdUpdater extends Plugin {
     }
 
     private getTimestamp(): string {
-        // `moment` приходит из Obsidian как `any`: даём значению тип, чтобы в коде
-        // не было небезопасных обращений (это же ловит автоматическая проверка).
-        const now: { format: (pattern: string) => string } = moment();
-        return now.format('YYYY-MM-DD HH:mm');
+        // Время берём из `Date`, а не из `moment`: тип `moment` живёт в отдельном
+        // пакете, и автоматическая проверка видит такой вызов как небезопасный.
+        // Формат ровно тот же, что писал `moment` — «2026-09-27 12:50».
+        const now = new Date(Date.now());
+        const pad = (value: number): string => String(value).padStart(2, '0');
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+            + ` ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
 }
 

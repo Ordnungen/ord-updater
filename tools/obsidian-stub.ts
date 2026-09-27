@@ -232,23 +232,6 @@ export function getLanguage(): string {
     return language;
 }
 
-/**
- * Minimal `moment` on top of the fake clock: the plugin formats timestamps with
- * it, so the checks can move time forward and see what changes.
- */
-export function moment(): { format: (pattern: string) => string } {
-    return {
-        format: (pattern: string): string => {
-            if (pattern !== 'YYYY-MM-DD HH:mm') {
-                throw new Error(`заглушка moment знает только "YYYY-MM-DD HH:mm", спросили "${pattern}"`);
-            }
-            const date = new Date(now);
-            const pad = (value: number): string => String(value).padStart(2, '0');
-            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-        },
-    };
-}
-
 // ---------------------------------------------------------------- metadata
 
 export interface CachedMetadata {

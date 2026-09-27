@@ -9,7 +9,7 @@
  */
 
 import { say } from './output';
-import fs from 'node:fs';
+import { fs } from './node-io';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import { DEFAULT_SETTINGS } from '../src/settings';
@@ -21,7 +21,7 @@ import {
     setLanguage,
     document as fakeDocument,
 } from './obsidian-stub';
-import path from 'node:path';
+import { path } from './node-io';
 
 /** Плагин так, как его создаёт Obsidian: приложение подменяется заглушкой. */
 function createPlugin(app: App): OrdUpdater {
@@ -45,7 +45,7 @@ const MANIFEST = {
 // Окружение: у плагина должны быть окно, таймеры, документ и язык.
 // --------------------------------------------------------------------------
 
-const globals = globalThis as unknown as Record<string, unknown>;
+const globals = global as unknown as Record<string, unknown>;
 installTimers(globals);
 globals['document'] = fakeDocument;
 
@@ -261,8 +261,8 @@ section('3. Декларативная вкладка настроек');
         definitions.find(item => item.control?.key === 'autoUpdate')?.desc ?? '');
     assert('3.5 опасные настройки собраны в группу с заголовком',
         rawDefinitions(plugin).some(item => 'heading' in item
-            && (item as SettingGroup).heading?.includes('Опасные')
-            && ((item as SettingGroup).items ?? []).some(child => child.control?.key === 'overwriteMode')));
+            && item.heading?.includes('Опасные')
+            && (item.items ?? []).some(child => child.control?.key === 'overwriteMode')));
 
     // Декларативный таб читает и пишет ровно тот объект, которым пользуется
     // плагин: одно хранилище настроек, а не две копии.

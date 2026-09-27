@@ -17,6 +17,13 @@ export default defineConfig([
             },
         },
         rules: {
+            // Набор, который включает сканер сообщества. Держим его включённым и
+            // в коде плагина: так наша проверка ловит то же, что и он.
+            "@typescript-eslint/no-unsafe-assignment": "error",
+            "@typescript-eslint/no-unsafe-member-access": "error",
+            "@typescript-eslint/no-unsafe-call": "error",
+            "@typescript-eslint/no-unsafe-argument": "error",
+            "@typescript-eslint/no-unsafe-return": "error",
             // Отключать правила можно только точечно и с причиной в комментарии.
         },
     },
@@ -32,6 +39,7 @@ export default defineConfig([
                 Date: "readonly",
                 setTimeout: "readonly",
                 clearTimeout: "readonly",
+                global: "readonly",
             },
         },
         rules: {

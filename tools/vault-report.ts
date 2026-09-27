@@ -9,8 +9,8 @@
  */
 
 import { say, sayErr } from './output';
-import fs from 'node:fs';
-import path from 'node:path';
+import { fs } from './node-io';
+import { path } from './node-io';
 import { readFrontmatter } from './obsidian-stub';
 interface Note {
     relative: string;

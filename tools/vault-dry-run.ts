@@ -10,15 +10,15 @@
  */
 
 import { say, sayErr } from './output';
-import fs from 'node:fs';
-import path from 'node:path';
+import { fs } from './node-io';
+import { path } from './node-io';
 import type { PluginManifest } from 'obsidian';
 import OrdUpdater from '../src/main';
 import {
     App, TFolder, drain, installTimers, readFrontmatter, setLanguage, document as fakeDocument,
 } from './obsidian-stub';
 
-const globals = globalThis as unknown as Record<string, unknown>;
+const globals = global as unknown as Record<string, unknown>;
 installTimers(globals);
 globals['document'] = fakeDocument;
 

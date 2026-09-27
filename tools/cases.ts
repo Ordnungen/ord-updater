@@ -788,6 +788,35 @@ section('9б. Разные хранилища');
     plugin.onunload();
 }
 
+section('9в. Перенос заметки между папками');
+{
+    const { app, plugin } = await startPlugin({
+        'Старый/Заметка.md': '---\nlinks:\n  - "[[Своё]]"\ntags:\n  - моё\n---\n\nтекст\n',
+    });
+    const file = app.vault.getAbstractFileByPath('Старый/Заметка.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(file, true);
+    const inOldFolder = app.vault.getContent('Старый/Заметка.md');
+    assert('9в.1 в исходной папке цепочка собрана, чужая ссылка цела',
+        inOldFolder.includes('[[Старый]]') && inOldFolder.includes('[[Своё]]'),
+        inOldFolder.split('\n').slice(0, 8).join(' | '));
+
+    app.vault.addFolder('Новый');
+    // Перенос в Obsidian происходит не сразу после нашей записи, поэтому окно
+    // дебаунса уже истекло — иначе авто-обновление пропустит событие.
+    await advance(4000);
+    await app.fileManager.renameFile(file, 'Новый/Заметка.md');
+    await advance(10);
+    const inNewFolder = app.vault.getContent('Новый/Заметка.md');
+    assert('9в.2 после переноса цепочка прежней папки ушла, новая появилась',
+        inNewFolder.includes('[[Новый]]') && !inNewFolder.includes('[[Старый]]'),
+        inNewFolder.split('\n').slice(0, 8).join(' | '));
+    assert('9в.3 чужой тег и чужая ссылка пережили перенос, тег папки сменился',
+        inNewFolder.includes('[[Своё]]') && inNewFolder.includes('моё')
+        && inNewFolder.includes('Новый') && !/tags:[\s\S]*?Старый/.test(inNewFolder),
+        inNewFolder.split('\n').slice(0, 10).join(' | '));
+    plugin.onunload();
+}
+
 // --------------------------------------------------------------------------
 // 9. Каркас: проверки самого репозитория
 // --------------------------------------------------------------------------

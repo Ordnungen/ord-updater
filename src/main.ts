@@ -275,8 +275,10 @@ export default class OrdUpdater extends Plugin {
 
         if (this.settings.autoUpdate) {
             this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) => this.handleAutoUpdate(file)));
-            this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile) => this.handleAutoUpdate(file)));
             this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) => this.handleAutoUpdate(file)));
+            // Переименование и перенос обрабатывает отдельный обработчик ниже:
+            // он и обновляет свойства, и убирает следы прежней папки — по
+            // порядку, а не двумя параллельными записями в один файл.
         }
 
         this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
@@ -388,8 +390,53 @@ export default class OrdUpdater extends Plugin {
         void this.safeUpdate(file, false);
     }
 
+    /**
+     * A note moved to another folder: the chain to its old sections and the tag
+     * of the old folder are no longer true, so exactly those go. Anything else
+     * in `links` and `tags` is the user's. The rename event gives the old path,
+     * which is the only way to tell our traces apart from the user's own.
+     */
+    private async dropStaleTraces(file: TFile, oldPath: string): Promise<void> {
+        const oldFolders = oldPath.split('/').slice(0, -1);
+        if (oldFolders.length === 0) return;
+
+        const currentChain = this.folderChain(file);
+        const staleLinks = oldFolders.map(part => `[[${part}]]`).filter(link => !currentChain.includes(link));
+        const oldTag = oldFolders[oldFolders.length - 1] ?? '';
+        const staleTag = oldTag !== '' && oldTag !== this.folderTag(file);
+
+        const frontmatter: Record<string, unknown> = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+        const links = toStringList(frontmatter['links']);
+        const keptLinks = links.filter(link => !staleLinks.includes(link));
+        const tags = toStringList(frontmatter['tags']);
+        const keptTags = tags.filter(tag => tag !== oldTag);
+
+        const linksChanged = this.settings.autoLinks && keptLinks.length !== links.length;
+        const tagsChanged = this.settings.autoTags && staleTag && keptTags.length !== tags.length;
+        if (!linksChanged && !tagsChanged) return;
+
+        this.processing.set(file.path, Date.now() + this.DEBOUNCE_MS);
+        await this.app.fileManager.processFrontMatter(file, (fm: Record<string, unknown>) => {
+            if (linksChanged) {
+                if (keptLinks.length > 0) fm['links'] = keptLinks;
+                else delete fm['links'];
+            }
+            if (tagsChanged) {
+                if (keptTags.length > 0) fm['tags'] = keptTags;
+                else delete fm['tags'];
+            }
+        });
+    }
+
     /** A renamed folder can leave its old index note behind. */
     private async handleVaultRename(file: TAbstractFile, oldPath: string): Promise<void> {
+        if (file instanceof TFile && file.extension === 'md') {
+            // Сначала свойства по новому месту, потом уборка следов старого:
+            // обе записи идут одна за другой в один файл.
+            if (this.settings.autoUpdate) await this.safeUpdate(file, true);
+            await this.dropStaleTraces(file, oldPath);
+            return;
+        }
         if (!(file instanceof TFolder)) return;
         const oldName = oldPath.split('/').pop();
         if (oldName && oldName !== file.name) {

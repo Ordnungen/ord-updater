@@ -144,6 +144,36 @@ function sanitizeSettings(data: unknown): ORDupdaterSettings {
     return result;
 }
 
+/** A property value as a list of strings, whatever shape it has in the file. */
+function toStringList(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(item => String(item));
+    if (typeof value === 'string') {
+        return value.split(',').map(item => item.trim()).filter(item => item !== '');
+    }
+    return [];
+}
+
+/** Adds the values that are not there yet, keeping the existing ones in place. */
+function mergeList(value: unknown, additions: string[]): string[] {
+    const result = toStringList(value);
+    for (const item of additions) {
+        if (!result.includes(item)) result.push(item);
+    }
+    return result;
+}
+
+/** Compares property values by content, not by reference. */
+function sameValue(left: unknown, right: unknown): boolean {
+    return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+/** A property value as text — only simple values have one. */
+function asText(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return '';
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -406,7 +436,7 @@ export default class OrdUpdater extends Plugin {
 
         // Step 4: update frontmatter
         try {
-            const changed = await this.updateFrontmatter(file);
+            const changed = await this.updateFrontmatter(file, !isManual);
             if (changed && isManual && this.pluginSettings.updateIndexOnSave && file.parent) {
                 await this.updateFolderIndex(file.parent);
             }
@@ -445,141 +475,92 @@ export default class OrdUpdater extends Plugin {
         }
     }
 
-    private async updateFrontmatter(file: TFile): Promise<boolean> {
-        const vault = this.app.vault;
-        const raw = await vault.read(file);
-
-        const match = raw.match(/^---\s*([\s\S]*?)\s*---/);
-        const existingFM = match ? match[1].trim() : '';
-        const body = match ? raw.slice(match[0].length) : raw;
-
-        const fm = this.parseFrontmatter(existingFM);
+    /**
+     * Properties are written through FileManager.processFrontMatter: Obsidian
+     * parses and serialises YAML itself, so property types, nested values and
+     * block scalars survive, and every plugin sees the same data.
+     *
+     * The file is only written when there is something to change: a repeated run
+     * over an untouched note leaves it alone, and `update` moves only when the
+     * note or its properties really changed.
+     */
+    private async updateFrontmatter(file: TFile, noteChanged: boolean): Promise<boolean> {
         const now = this.getTimestamp();
+        const current: Record<string, unknown> = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+        const plan = this.plannedProperties(file, current, now, noteChanged);
+        if (!plan) return false;
 
-        if (this.pluginSettings.overwriteMode) {
-            // Overwrite mode: keep only plugin-managed fields, remove the rest
-            const original = this.parseFrontmatter(existingFM);
-            fm.clear();
-            for (const k of ['date', 'update']) {
-                const v = original.get(k);
-                if (v !== undefined) fm.set(k, v);
-            }
-        }
-
-        const tagName = (file.parent && file.parent.name) ? file.parent.name : file.basename;
-
-        const folderParts = file.parent ? file.parent.path.split('/').filter(Boolean) : [];
-        let folderLinks: string[];
-        if (folderParts.length > 0) {
-            folderLinks = [...new Set(folderParts.map(p => `[[${p}]]`))];
-        } else if (file.parent && file.parent.name) {
-            folderLinks = [`[[${file.parent.name}]]`];
-        } else {
-            folderLinks = [];
-        }
-
-        if (!fm.has('date')) {
-            fm.set('date', now);
-        }
-        fm.set('update', now);
-
-        if (this.pluginSettings.autoTags) {
-            const newTags = [tagName];
-            // Preserve "index" tag for orphaned index files
-            const existing = fm.get('tags');
-            if (existing && (Array.isArray(existing) ? existing : [existing]).some(t => t === 'index')) {
-                newTags.push('index');
-            }
-            fm.set('tags', newTags);
-        } else {
-            fm.delete('tags');
-        }
-
-        if (this.pluginSettings.autoLinks) {
-            if (folderLinks.length > 0) {
-                fm.set('links', folderLinks);
-            }
-        } else {
-            fm.delete('links');
-        }
-
-        const newFM = this.serializeFrontmatter(fm);
-        const cleanBody = body.replace(/^\s*\n/, '');
-        const newContent = `---\n${newFM}---\n\n${cleanBody}`;
-
-        if (raw !== newContent) {
-            this.processing.set(file.path, Date.now() + this.DEBOUNCE_MS);
-            await vault.modify(file, newContent);
-            if (this.inBatch) {
-                this.contentCache.set(file.path, newContent);
-            }
-            return true;
-        } else {
-            if (this.inBatch) {
-                this.contentCache.set(file.path, raw);
-            }
-        }
-        return false;
+        this.processing.set(file.path, Date.now() + this.DEBOUNCE_MS);
+        await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+            for (const [key, value] of Object.entries(plan.changes)) frontmatter[key] = value;
+            for (const key of plan.removals) delete frontmatter[key];
+        });
+        return true;
     }
 
-    private parseFrontmatter(fm: string): Map<string, string | string[]> {
-        const map = new Map<string, string | string[]>();
-        const lines = fm.split('\n');
-        let currentKey: string | null = null;
+    /**
+     * What the properties should say, as a patch on the current state.
+     * Returns null when there is nothing to do — that is what keeps a second run
+     * from touching the file at all.
+     */
+    private plannedProperties(
+        file: TFile,
+        current: Record<string, unknown>,
+        now: string,
+        noteChanged: boolean,
+    ): { changes: Record<string, unknown>; removals: string[] } | null {
+        const settings = this.pluginSettings;
+        const changes: Record<string, unknown> = {};
+        const removals: string[] = [];
+        const folderTag = this.folderTag(file);
+        const chain = this.folderChain(file);
 
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            const keyMatch = trimmed.match(/^(\S+?):\s*(.*)$/);
-            if (keyMatch) {
-                currentKey = keyMatch[1];
-                const val = keyMatch[2].trim();
-                if (val === '') {
-                    map.set(currentKey, []);
-                } else if (val.startsWith('[') && val.endsWith(']')) {
-                    try {
-                        const items = JSON.parse(val) as unknown;
-                        if (Array.isArray(items)) {
-                            map.set(currentKey, items);
-                        } else {
-                            map.set(currentKey, val);
-                        }
-                    } catch {
-                        const rawItems = val.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-                        map.set(currentKey, rawItems.filter(Boolean));
-                    }
-                } else {
-                    map.set(currentKey, val);
-                }
-            } else if (currentKey && /^\s+-/.test(line)) {
-                const item = trimmed.replace(/^-\s*/, '').replace(/^["']|["']$/g, '');
-                const existing = map.get(currentKey);
-                if (Array.isArray(existing)) {
-                    existing.push(item);
-                }
+        if (settings.overwriteMode) {
+            // Overwrite mode: only the properties this plugin manages survive.
+            for (const key of Object.keys(current)) {
+                if (!['date', 'update', 'tags', 'links'].includes(key)) removals.push(key);
             }
         }
-        return map;
-    }
 
-    private serializeFrontmatter(map: Map<string, string | string[]>): string {
-        const lines: string[] = [];
-        for (const [key, val] of map.entries()) {
-            if (Array.isArray(val)) {
-                if (val.length === 0) {
-                    lines.push(`${key}:`);
-                } else {
-                    lines.push(`${key}:`);
-                    for (const item of val) {
-                        lines.push(`  - "${item}"`);
-                    }
-                }
+        const date = current['date'];
+        if (asText(date).trim() === '') changes['date'] = now;
+
+        if (settings.autoTags) {
+            if (settings.overwriteMode) {
+                // The index tag marks a note this plugin created: keep it.
+                const index = toStringList(current['tags']).filter(tag => tag === 'index');
+                changes['tags'] = [...new Set([folderTag, ...index])];
             } else {
-                lines.push(`${key}: ${val}`);
+                // Merge: the folder tag is added, the user's own tags stay.
+                const tags = mergeList(current['tags'], [folderTag]);
+                if (!sameValue(tags, current['tags'])) changes['tags'] = tags;
             }
+        } else if (settings.overwriteMode && current['tags'] !== undefined) {
+            removals.push('tags');
         }
-        return lines.join('\n') + '\n';
+
+        if (settings.autoLinks && chain.length > 0) {
+            const links = settings.overwriteMode ? chain : mergeList(current['links'], chain);
+            if (!sameValue(links, current['links'])) changes['links'] = links;
+        } else if (settings.overwriteMode && current['links'] !== undefined) {
+            removals.push('links');
+        }
+
+        const touched = Object.keys(changes).length > 0 || removals.length > 0;
+        if (!touched && !noteChanged) return null;
+        if (asText(current['update']) !== now) changes['update'] = now;
+        return { changes, removals };
+    }
+
+    /** Tag of the folder the note lives in; the note's own name at the root. */
+    private folderTag(file: TFile): string {
+        return file.parent && file.parent.name ? file.parent.name : file.basename;
+    }
+
+    /** Links to the folders the note lives in, from the top down. */
+    private folderChain(file: TFile): string[] {
+        const parts = file.parent ? file.parent.path.split('/').filter(Boolean) : [];
+        return [...new Set(parts.map(part => `[[${part}]]`))];
     }
 
     private async getMarkdownFilesRecursive(folder: TFolder): Promise<TFile[]> {

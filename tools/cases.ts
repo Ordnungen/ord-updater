@@ -244,25 +244,36 @@ section('4. Свойства заметки');
 
     const content = app.vault.getContent('Папка/Заметка.md');
     assert('4.1 свойства добавлены в начало заметки', content.startsWith('---\n'), content.split('\n')[0]);
-    assert('4.2 date и update заполнены', /date: \d{4}-\d{2}-\d{2}/.test(content) && /update: \d{4}-\d{2}-\d{2}/.test(content));
-    assert('4.3 тег папки записан', content.includes('tags:') && content.includes('"Папка"'));
+    assert('4.2 date и update заполнены',
+        /date: "?\d{4}-\d{2}-\d{2}/.test(content) && /update: "?\d{4}-\d{2}-\d{2}/.test(content), content);
+    assert('4.3 тег папки записан', content.includes('tags:') && content.includes('Папка'), content);
     assert('4.4 цепочка ссылок собрана', content.includes('links:') && content.includes('[[Папка]]'));
     assert('4.5 тело заметки не потеряно', content.includes('# Заметка') && content.includes('текст'));
 
     const first = app.vault.getContent('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
-    assert('4.6 повторный прогон в ту же минуту не пишет файл',
+    assert('4.6 повторный ручной прогон в ту же минуту не пишет файл',
         app.vault.getContent('Папка/Заметка.md') === first);
 
-    // Известный дефект: отметка обновляется при каждом прогоне, поэтому позже
-    // файл переписывается без изменений. После захода 20 кейс должен
-    // утверждать обратное.
+    // Ручной прогон позже тоже ничего не пишет: свойства уже такие, как надо.
     await advance(61_000);
     const writesBefore = app.vault.writeCount('Папка/Заметка.md');
     await privateApi(plugin).safeUpdate(file, true);
-    assert('4.7 известный дефект: прогон в следующую минуту переписывает заметку',
-        app.vault.writeCount('Папка/Заметка.md') > writesBefore,
+    assert('4.7 повторный ручной прогон в следующую минуту не трогает заметку',
+        app.vault.writeCount('Папка/Заметка.md') === writesBefore,
         `записей: ${writesBefore} → ${app.vault.writeCount('Папка/Заметка.md')}`);
+
+    // А вот правка самой заметки отметку update двигает.
+    const beforeEdit = app.vault.getContent('Папка/Заметка.md');
+    const updateBefore = /update: "?([^"\n]+)/.exec(beforeEdit)?.[1] ?? '';
+    await advance(61_000);
+    await app.vault.modify(file, `${beforeEdit}\nдописано\n`);
+    await advance(10);
+    const afterEdit = app.vault.getContent('Папка/Заметка.md');
+    const updateAfter = /update: "?([^"\n]+)/.exec(afterEdit)?.[1] ?? '';
+    assert('4.8 правка заметки обновляет отметку update',
+        afterEdit.includes('дописано') && updateAfter !== updateBefore,
+        `${updateBefore} → ${updateAfter}`);
     plugin.onunload();
 }
 {
@@ -272,8 +283,41 @@ section('4. Свойства заметки');
     privateApi(plugin).pluginSettings.autoLinks = false;
     await privateApi(plugin).safeUpdate(file, true);
     const content = app.vault.getContent('Папка/Заметка.md');
-    assert('4.8 выключенные авто-теги и авто-ссылки не пишутся',
+    assert('4.9 выключенные авто-теги и авто-ссылки не пишутся',
         !content.includes('tags:') && !content.includes('links:'), content.split('\n').slice(0, 6).join(' | '));
+    plugin.onunload();
+}
+
+{
+    // Слияние: чужие теги и ссылки остаются, наши добавляются.
+    const { app, plugin } = await startPlugin({
+        'Папка/Заметка.md': '---\ntags:\n  - "проект"\nlinks:\n  - "[[Своё]]"\ndescription: "руками"\n---\n\nтекст\n',
+    });
+    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(file, true);
+    const content = app.vault.getContent('Папка/Заметка.md');
+    assert('4.10 чужие теги сохранены, тег папки добавлен',
+        content.includes('проект') && content.includes('Папка'), content);
+    assert('4.11 чужие ссылки сохранены, цепочка добавлена',
+        content.includes('[[Своё]]') && content.includes('[[Папка]]'), content);
+    assert('4.12 незнакомые свойства не тронуты', content.includes('description: руками'));
+    plugin.onunload();
+}
+{
+    // Вложенные и блочные значения, а также типы переживают прогон.
+    const nested = '---\ncover:\n  image: a.png\n  alt: подпись\npinned: true\nrating: 5\nnote: >\n  строка один\n  строка два\ntags: "проект, идея"\n---\n\nтекст\n';
+    const { app, plugin } = await startPlugin({ 'Папка/Заметка.md': nested });
+    const file = app.vault.getAbstractFileByPath('Папка/Заметка.md') as unknown as TFile;
+    await privateApi(plugin).safeUpdate(file, true);
+    const content = app.vault.getContent('Папка/Заметка.md');
+    assert('4.13 вложенные свойства сохранены',
+        content.includes('cover:') && content.includes('image: a.png') && content.includes('alt: подпись'), content);
+    assert('4.14 типы свойств сохранены',
+        content.includes('pinned: true') && content.includes('rating: 5'), content);
+    assert('4.15 блочное значение сохранено',
+        content.includes('строка один') && content.includes('строка два'));
+    assert('4.16 теги, записанные строкой, разобраны и дополнены',
+        content.includes('проект') && content.includes('идея') && content.includes('Папка'), content);
     plugin.onunload();
 }
 
@@ -513,10 +557,11 @@ section('9. Каркас');
         !source.includes('vault.rename(') && source.includes('fileManager.renameFile('));
     assert('9.2 запись индексной заметки идёт через Vault.process',
         source.includes('vault.process(') && !source.includes('vault.modify(existing, content)'));
-    // Остаётся один vault.modify в updateFrontmatter: переписывание свойств на
-    // processFrontMatter — заход 20 из docs/PLAN.md.
-    assert('9.3 свойства пока пишутся вручную (долг до захода 20)',
-        source.includes('parseFrontmatter(') && source.includes('serializeFrontmatter('));
+    assert('9.3 свойства пишутся через processFrontMatter, ручного YAML больше нет',
+        source.includes('processFrontMatter(')
+        && !source.includes('parseFrontmatter(')
+        && !source.includes('serializeFrontmatter(')
+        && !source.includes('vault.modify('));
     assert('9.4 путь собирается через normalizePath', source.includes('normalizePath('));
 
     const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8')) as { name: string; version: string };

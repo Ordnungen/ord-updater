@@ -205,6 +205,9 @@ export function installTimers(target: Record<string, unknown>): void {
     target['window'] = target;
     target['setInterval'] = target['setTimeout'];
     target['clearInterval'] = target['clearTimeout'];
+    // The plugin debounces with Date.now(), so the clock has to be one clock:
+    // otherwise "expired" never arrives and the checks test nothing.
+    (Date as unknown as { now: () => number }).now = () => now;
 }
 
 export function resetClock(): void {
@@ -247,38 +250,125 @@ export interface CachedMetadata {
 }
 
 /**
- * Reads the `tags` property (and other simple scalars) out of a frontmatter
- * block. The plugin only asks the cache about tags, so the reader stays small.
+ * Reads a frontmatter block into plain values the way Obsidian does: strings,
+ * numbers, booleans, arrays, nested objects and block scalars. This is a subset
+ * of YAML — enough for the properties a vault really contains, and honest about
+ * the rest: anything unknown comes back as a string.
  */
 export function readFrontmatter(content: string): Record<string, unknown> {
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!match) return {};
+    return parseFrontmatterBlock(match[1]);
+}
+
+export function parseFrontmatterBlock(text: string): Record<string, unknown> {
+    const lines = text.split(/\r?\n/);
     const result: Record<string, unknown> = {};
-    const lines = match[1].split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const keyMatch = line.match(/^([^\s#][^:]*):\s*(.*)$/);
-        if (!keyMatch) continue;
+    let index = 0;
+    while (index < lines.length) {
+        const line = lines[index];
+        if (line.trim() === '' || /^\s*#/.test(line)) {
+            index++;
+            continue;
+        }
+        const keyMatch = line.match(/^([^\s#][^:]*?):\s*(.*)$/);
+        if (!keyMatch) {
+            index++;
+            continue;
+        }
         const key = keyMatch[1].trim();
-        const value = keyMatch[2].trim();
+        const value = keyMatch[2];
         if (value === '') {
             const items: string[] = [];
-            while (i + 1 < lines.length && /^\s+-/.test(lines[i + 1])) {
-                i++;
-                items.push(unquote(lines[i].trim().replace(/^-\s*/, '')));
+            const nested: Record<string, unknown> = {};
+            let isList = false;
+            let isMap = false;
+            let next = index + 1;
+            while (next < lines.length && /^\s+/.test(lines[next]) && lines[next].trim() !== '') {
+                if (/^\s+-/.test(lines[next])) {
+                    isList = true;
+                    items.push(unquote(lines[next].trim().replace(/^-\s*/, '')));
+                } else {
+                    const inner = lines[next].match(/^\s+([^\s#][^:]*?):\s*(.*)$/);
+                    if (inner) {
+                        isMap = true;
+                        nested[inner[1].trim()] = scalar(inner[2]);
+                    }
+                }
+                next++;
             }
-            result[key] = items.length > 0 ? items : null;
-        } else if (value.startsWith('[') && value.endsWith(']')) {
-            result[key] = value.slice(1, -1).split(',').map(item => unquote(item.trim())).filter(Boolean);
-        } else {
-            result[key] = unquote(value);
+            result[key] = isList ? items : isMap ? nested : null;
+            index = next;
+            continue;
         }
+        if (/^[|>]/.test(value)) {
+            const block: string[] = [];
+            let next = index + 1;
+            while (next < lines.length && (/^\s+/.test(lines[next]) || lines[next].trim() === '')) {
+                block.push(lines[next].replace(/^\s{2}/, ''));
+                next++;
+            }
+            result[key] = value.startsWith('>') ? block.join(' ').trim() : block.join('\n').replace(/\s+$/, '');
+            index = next;
+            continue;
+        }
+        result[key] = scalar(value);
+        index++;
     }
     return result;
 }
 
+function scalar(value: string): unknown {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        return trimmed.slice(1, -1).split(',').map(item => unquote(item.trim())).filter(item => item !== '');
+    }
+    if (trimmed === '' || trimmed === 'null' || trimmed === '~') return null;
+    if (trimmed === 'true' || trimmed === 'false') return trimmed === 'true';
+    if (/^-?\d+$/.test(trimmed) || /^-?\d+\.\d+$/.test(trimmed)) return Number(trimmed);
+    return unquote(trimmed);
+}
+
 function unquote(value: string): string {
     return value.replace(/^["']|["']$/g, '');
+}
+
+/** Writes values back in the shape Obsidian writes them. */
+export function serializeFrontmatter(frontmatter: Record<string, unknown>): string {
+    const lines: string[] = [];
+    const write = (key: string, value: unknown, indent: string): void => {
+        if (Array.isArray(value)) {
+            if (value.length === 0) {
+                lines.push(`${indent}${key}:`);
+                return;
+            }
+            lines.push(`${indent}${key}:`);
+            for (const item of value) lines.push(`${indent}  - ${formatScalar(item)}`);
+            return;
+        }
+        if (value !== null && typeof value === 'object') {
+            lines.push(`${indent}${key}:`);
+            for (const [inner, innerValue] of Object.entries(value as Record<string, unknown>)) {
+                write(inner, innerValue, `${indent}  `);
+            }
+            return;
+        }
+        lines.push(`${indent}${key}: ${formatScalar(value)}`);
+    };
+    for (const [key, value] of Object.entries(frontmatter)) write(key, value, '');
+    return lines.length > 0 ? `${lines.join('\n')}\n` : '';
+}
+
+function formatScalar(value: unknown): string {
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value === null || value === undefined) return '';
+    const text = String(value);
+    // Quotes only where YAML really needs them, like Obsidian's own writer:
+    // "2026-09-27 10:58" stays plain, "5" would otherwise become a number.
+    const needsQuotes = text === ''
+        || /(^:)|(:\s)|^\s|\s$|[#"]/.test(text)
+        || /^(true|false|null|~|-?\d+(\.\d+)?)$/.test(text);
+    return needsQuotes ? `"${text.replace(/"/g, '\\"')}"` : text;
 }
 
 // ---------------------------------------------------------------- vault
@@ -514,6 +604,23 @@ export class FileManager {
 
     async trashFile(file: TAbstractFile): Promise<void> {
         await this.vault.delete(file);
+    }
+
+    /**
+     * Parse the frontmatter, hand it over for changes and write it back — the
+     * shape Obsidian offers. Values keep their types, unknown properties and
+     * their nesting survive, and the body is left untouched.
+     */
+    async processFrontMatter(
+        file: TFile,
+        fn: (frontmatter: Record<string, unknown>) => void | Promise<void>,
+    ): Promise<void> {
+        const content = this.vault.getContent(file.path);
+        const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+        const frontmatter = match ? parseFrontmatterBlock(match[1]) : {};
+        const body = match ? content.slice(match[0].length) : content;
+        await fn(frontmatter);
+        await this.vault.modify(file, `---\n${serializeFrontmatter(frontmatter)}---${body}`);
     }
 }
 

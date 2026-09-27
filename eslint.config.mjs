@@ -48,6 +48,9 @@ export default defineConfig([
             // Причина: заглушка повторяет API Obsidian целиком, включая Vault.delete,
             // которую настоящий плагин не вызывает.
             "obsidianmd/prefer-file-manager-trash-file": "off",
+            // Причина: заглушка печатает значения свойств в YAML, любое из них
+            // нужно привести к тексту.
+            "@typescript-eslint/no-base-to-string": "off",
         },
     },
 ]);

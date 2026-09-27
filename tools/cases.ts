@@ -76,7 +76,7 @@ const privateApi = (plugin: OrdUpdater) => plugin as unknown as {
     safeUpdate(file: unknown, isManual: boolean): Promise<boolean>;
     updateFolderIndex(folder: unknown): Promise<void>;
     processing: Map<string, number>;
-    settings: Record<string, boolean>;
+    settings: Record<string, boolean | string>;
 };
 
 /**
@@ -241,12 +241,12 @@ section('3. Декларативная вкладка настроек');
     const { plugin } = await startPlugin({ 'Папка/Заметка.md': '' });
     const definitions = settingDefinitions(plugin);
     const keys = definitions.map(item => item.control?.key ?? '');
-    assert('3.1 объявлены все восемь настроек', definitions.length === 8, keys.join(', '));
-    assert('3.2 каждая настройка — переключатель, привязанный к своему полю',
-        definitions.every(item => item.control?.type === 'toggle')
+    assert('3.1 объявлены все девять настроек', definitions.length === 9, keys.join(', '));
+    assert('3.2 у каждой настройки свой контрол: переключатель или поле ввода',
+        definitions.every(item => item.control?.type === 'toggle' || item.control?.type === 'text')
         && !keys.includes('')
         && new Set(keys).size === keys.length,
-        keys.join(', '));
+        definitions.map(item => `${item.control?.key}:${item.control?.type}`).join(', '));
     assert('3.3 поля настроек совпадают с набором плагина',
         keys.sort().join(',') === Object.keys(privateApi(plugin).settings).sort().join(','),
         keys.join(', '));
@@ -602,6 +602,43 @@ section('8. События и дебаунс');
     app.workspace.trigger('file-menu', fileMenu.menu, app.vault.getAbstractFileByPath('Папка/Заметка.md'));
     assert('8.10 в меню заметки есть пункт обновления файла',
         fileMenu.items.length === 1 && fileMenu.items[0].title.startsWith('ORDupdater: '));
+    plugin.onunload();
+}
+
+{
+    // Список пропускаемых имён — настройка, а не жёстко зашитый код.
+    const { app, plugin } = await startPlugin({
+        'src/Внутри.md': '',
+        'Черновики/Идея.md': '',
+        'Работа/Заметка.md': '',
+        'readme.md': '',
+    });
+    const api = privateApi(plugin);
+    await api.safeUpdate(app.vault.getAbstractFileByPath('src/Внутри.md'), true);
+    await api.safeUpdate(app.vault.getAbstractFileByPath('Черновики/Идея.md'), true);
+    await api.safeUpdate(app.vault.getAbstractFileByPath('Работа/Заметка.md'), true);
+    await api.safeUpdate(app.vault.getAbstractFileByPath('readme.md'), true);
+    assert('8.11 по умолчанию пропускаются node_modules, src, dist, build, README.md',
+        app.vault.getContent('src/Внутри.md') === '' && app.vault.getContent('readme.md') === ''
+        && app.vault.getContent('Работа/Заметка.md').startsWith('---')
+        && app.vault.getContent('Черновики/Идея.md').startsWith('---'),
+        `src: ${app.vault.getContent('src/Внутри.md').slice(0, 4)} | readme: ${app.vault.getContent('readme.md').slice(0, 4)} | работа: ${app.vault.getContent('Работа/Заметка.md').slice(0, 4)}`);
+
+    // Свой список: пропускается то, что в нём написано, а прежние имена — нет.
+    // addFile (а не create) — чтобы не запускать событие создания хранилища.
+    app.vault.addFile('Черновики/Вторая.md', '');
+    api.settings.skipNames = 'черновики';
+    await api.safeUpdate(app.vault.getAbstractFileByPath('Черновики/Вторая.md'), true);
+    await api.safeUpdate(app.vault.getAbstractFileByPath('src/Внутри.md'), true);
+    assert('8.12 свой список имён работает, а прежние имена больше не пропускаются',
+        app.vault.getContent('Черновики/Вторая.md') === ''
+        && app.vault.getContent('src/Внутри.md').startsWith('---'),
+        `черновики: ${app.vault.getContent('Черновики/Вторая.md').slice(0, 4)} | src: ${app.vault.getContent('src/Внутри.md').slice(0, 4)}`);
+
+    api.settings.skipNames = 'nope';
+    await api.safeUpdate(app.vault.getAbstractFileByPath('readme.md'), true);
+    assert('8.13 заметка readme.md обрабатывается, если убрать её из списка',
+        app.vault.getContent('readme.md').startsWith('---'));
     plugin.onunload();
 }
 

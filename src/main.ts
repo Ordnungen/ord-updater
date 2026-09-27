@@ -27,6 +27,8 @@ const LANG = {
         settingIndexDesc: 'Автоматически создавать и обновлять индексные файлы папок.',
         settingIndexOnSave: 'Обновлять индекс при сохранении',
         settingIndexOnSaveDesc: 'Обновлять индексный файл родительской папки при сохранении.',
+        settingSkipNames: 'Не трогать имена',
+        settingSkipNamesDesc: 'Папки и заметки с этими именами плагин пропускает. Список через запятую, регистр не важен. Скрытые папки пропускаются всегда.',
         settingDangerous: 'Опасные функции',
         settingLock: 'Блокировать свойства',
         settingLockDesc: 'Скрывает кнопку «Добавить свойство» и крестики удаления тегов в режиме чтения. Полезно если плагин управляет свойствами.',
@@ -61,6 +63,8 @@ const LANG = {
         settingIndexDesc: 'Automatically create and update folder index files.',
         settingIndexOnSave: 'Update index on save',
         settingIndexOnSaveDesc: 'Update the parent folder index file on save.',
+        settingSkipNames: 'Skip names',
+        settingSkipNamesDesc: 'Folders and notes with these names are left alone. Comma separated, case does not matter. Hidden folders are always skipped.',
         settingDangerous: 'Dangerous features',
         settingLock: 'Lock properties',
         settingLockDesc: 'Hides the "Add property" button and tag remove buttons in read mode. Useful when the plugin manages properties.',
@@ -115,6 +119,8 @@ interface ORDupdaterSettings {
     overwriteMode: boolean;
     sanitizeSpaces: boolean;
     lockProperties: boolean;
+    /** Folders and notes the plugin never touches, comma separated. */
+    skipNames: string;
 }
 
 const DEFAULT_SETTINGS: ORDupdaterSettings = {
@@ -126,6 +132,9 @@ const DEFAULT_SETTINGS: ORDupdaterSettings = {
     overwriteMode: false,
     sanitizeSpaces: false,
     lockProperties: false,
+    // Значения по умолчанию повторяют прежнее поведение: имена, которые плагин
+    // пропускал жёстко зашитыми, теперь можно менять в настройках.
+    skipNames: 'node_modules, src, dist, build, README.md',
 };
 
 /**
@@ -137,11 +146,27 @@ function sanitizeSettings(data: unknown): ORDupdaterSettings {
     const raw: Record<string, unknown> = typeof data === 'object' && data !== null
         ? data as Record<string, unknown>
         : {};
-    const result = { ...DEFAULT_SETTINGS };
-    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof ORDupdaterSettings)[]) {
-        if (typeof raw[key] === 'boolean') result[key] = raw[key];
-    }
-    return result;
+    const flag = (value: unknown, fallback: boolean): boolean =>
+        typeof value === 'boolean' ? value : fallback;
+    return {
+        autoUpdate: flag(raw['autoUpdate'], DEFAULT_SETTINGS.autoUpdate),
+        autoTags: flag(raw['autoTags'], DEFAULT_SETTINGS.autoTags),
+        autoLinks: flag(raw['autoLinks'], DEFAULT_SETTINGS.autoLinks),
+        autoIndex: flag(raw['autoIndex'], DEFAULT_SETTINGS.autoIndex),
+        updateIndexOnSave: flag(raw['updateIndexOnSave'], DEFAULT_SETTINGS.updateIndexOnSave),
+        overwriteMode: flag(raw['overwriteMode'], DEFAULT_SETTINGS.overwriteMode),
+        sanitizeSpaces: flag(raw['sanitizeSpaces'], DEFAULT_SETTINGS.sanitizeSpaces),
+        lockProperties: flag(raw['lockProperties'], DEFAULT_SETTINGS.lockProperties),
+        skipNames: typeof raw['skipNames'] === 'string' ? raw['skipNames'] : DEFAULT_SETTINGS.skipNames,
+    };
+}
+
+/** Имена из настройки: пустые куски отбрасываем, сравнение — без регистра. */
+function parseSkipNames(value: string): string[] {
+    return value
+        .split(',')
+        .map(name => name.trim().toLowerCase())
+        .filter(name => name !== '');
 }
 
 /** A property value as a list of strings, whatever shape it has in the file. */
@@ -347,6 +372,17 @@ export default class OrdUpdater extends Plugin {
         }
     }
 
+    /**
+     * Names the plugin leaves alone: hidden entries always (Obsidian's own
+     * folders among them), plus whatever the `skipNames` setting lists. The
+     * setting repeats the names that used to be hardcoded, so the default
+     * behaviour is the one users already know.
+     */
+    private shouldSkip(path: string): boolean {
+        const skip = parseSkipNames(this.settings.skipNames);
+        return path.split('/').some(part => part.startsWith('.') || skip.includes(part.toLowerCase()));
+    }
+
     /** Vault events expect a void callback; the work itself is awaited inside. */
     private handleAutoUpdate(file: TAbstractFile): void {
         void this.safeUpdate(file, false);
@@ -380,14 +416,7 @@ export default class OrdUpdater extends Plugin {
 
     private async safeUpdate(file: TAbstractFile, isManual: boolean): Promise<boolean> {
         if (!(file instanceof TFile) || file.extension !== 'md') return false;
-        // Skip hidden files and any file inside hidden folders
-        const pathParts = file.path.split('/');
-        if (pathParts.some(p => p.startsWith('.'))) return false;
-        // Skip files in dev/build directories
-        if (pathParts.includes('node_modules')) return false;
-        if (pathParts.includes('src')) return false;
-        // Skip README.md — used for GitHub/community page, don't add frontmatter
-        if (file.name.toLowerCase() === 'readme.md') return false;
+        if (this.shouldSkip(file.path)) return false;
         // Debounce: skip auto events within DEBOUNCE_MS, but NOT manual
         if (!isManual) {
             const expiry = this.processing.get(file.path);
@@ -614,11 +643,7 @@ export default class OrdUpdater extends Plugin {
         // Skip root folder and hidden/system folders
         if (!folder.path || folder.path === '') return;
         try { if (folder.isRoot()) return; } catch { /* fallback: path already checked */ }
-        if (folder.path.split('/').some(p => p.startsWith('.'))) return;
-        if (folder.path.includes('/node_modules/') || folder.path === 'node_modules') return;
-        // Skip dev directories
-        const folderName = folder.name;
-        if (folderName === 'src' || folderName === 'dist' || folderName === 'build') return;
+        if (this.shouldSkip(folder.path)) return;
         // Skip plugin directories (containing manifest.json or package.json)
         if (folder.children.some(c => c instanceof TFile && (c.name === 'manifest.json' || c.name === 'package.json'))) return;
         try {
@@ -770,6 +795,11 @@ class ORDupdaterSettingTab extends PluginSettingTab {
                     toggle('autoIndex', 'settingIndex', 'settingIndexDesc'),
                     toggle('updateIndexOnSave', 'settingIndexOnSave', 'settingIndexOnSaveDesc'),
                     toggle('lockProperties', 'settingLock', 'settingLockDesc'),
+                    {
+                        name: t('settingSkipNames'),
+                        desc: t('settingSkipNamesDesc'),
+                        control: { type: 'text', key: 'skipNames' },
+                    },
                 ],
             },
             {

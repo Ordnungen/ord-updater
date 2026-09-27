@@ -555,7 +555,8 @@ export class Vault {
         return result;
     }
 
-    async delete(file: TAbstractFile): Promise<void> {
+    /** Removes a file from the fake vault (our own helper, not Obsidian's API). */
+    async removeFile(file: TAbstractFile): Promise<void> {
         this.detach(file);
         if (file instanceof TFile) this.contents.delete(file.path);
         await this.trigger('delete', file);
@@ -609,7 +610,7 @@ export class FileManager {
     }
 
     async trashFile(file: TAbstractFile): Promise<void> {
-        await this.vault.delete(file);
+        await this.vault.removeFile(file);
     }
 
     /**

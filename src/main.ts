@@ -577,7 +577,10 @@ export default class OrdUpdater extends Plugin {
     }
 
     private getTimestamp(): string {
-        return moment().format('YYYY-MM-DD HH:mm');
+        // `moment` приходит из Obsidian как `any`: даём значению тип, чтобы в коде
+        // не было небезопасных обращений (это же ловит автоматическая проверка).
+        const now: { format: (pattern: string) => string } = moment();
+        return now.format('YYYY-MM-DD HH:mm');
     }
 }
 
